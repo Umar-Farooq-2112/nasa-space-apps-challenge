@@ -1,0 +1,17 @@
+# environment
+.venv/
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+
+# large / regenerable data (re-create with scripts/)
+data/raw/
+data/frames/
+data/cache/
+*.fits
+*.fits.gz
+
+# scratch
+tmp/
+*.log

@@ -1,0 +1,7 @@
+astropy
+pyvo
+numpy
+pillow
+requests
+fastapi
+uvicorn
