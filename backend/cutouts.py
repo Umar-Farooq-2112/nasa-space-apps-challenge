@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
-from PIL import Image
+from PIL import Image, ImageFilter
 from scipy import ndimage
 
 from .movers import PIX_ARCSEC, Frame
@@ -21,8 +21,8 @@ CACHE = Path("/tmp/charon/cutouts") if ON_VERCEL else ROOT / "data" / "raw" / "c
 SEED = ROOT / "seed" / "cutouts"   # the demo targets, shipped with the code so they open instantly
 if ON_VERCEL and SEED.exists() and not CACHE.exists():
     shutil.copytree(SEED, CACHE, dirs_exist_ok=True)
-SCALE = 12  # upscale tiny (~59x59 px for 0.1 deg) images, smoothly (bicubic), so they look sharp on screen
-RENDER_VERSION = 8  # bump when render_png changes: browsers cache frame PNGs for a day
+SCALE = 18  # upscale tiny (~59x59 px for 0.1 deg) images to ~1060 px, so the 1080-1440 px viewer never stretches them
+RENDER_VERSION = 9  # bump when render_png changes: browsers cache frame PNGs for a day
 
 
 def folder_for(ra: float, dec: float, fov: float) -> Path:
@@ -134,6 +134,8 @@ def render_png(folder: str, file: str, ref_files: tuple = (), mode: str = "sky")
     # centres where the mover overlay expects them ((px + 0.5) * SCALE)
     s = ndimage.zoom(s, SCALE, order=3, grid_mode=True, mode="nearest")
     pic = Image.fromarray((np.clip(s, 0, 1) * 255).astype(np.uint8))
+    # gentle unsharp mask at the scale of one SPHEREx pixel: crisper stars without inventing detail
+    pic = pic.filter(ImageFilter.UnsharpMask(radius=SCALE * 0.5, percent=60, threshold=1))
     pic = pic.transpose(Image.FLIP_TOP_BOTTOM)  # FITS origin is bottom-left; now north is up
     buf = io.BytesIO()
     pic.save(buf, "PNG")

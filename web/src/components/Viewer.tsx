@@ -5,7 +5,7 @@ import { fmtDate, PIX } from "../lib";
 import { reduceMotion } from "../hooks";
 import { Segmented } from "./Bits";
 
-const W = 1080;   // canvas resolution; CSS scales it to the plate size
+const W = 1440;   // canvas resolution: sharp on 2x screens and in full view; CSS scales it to the plate size
 const SPEEDS = [{ v: "700", label: "Slow" }, { v: "350", label: "Normal" }, { v: "150", label: "Fast" }] as const;
 const MODES: { v: Mode; label: ReactNode; title: string }[] = [
   { v: "sky", label: <><ImageIcon size={15} />Photos</>, title: "The photos as NASA took them" },
