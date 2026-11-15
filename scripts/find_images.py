@@ -14,7 +14,7 @@ TAP = "https://irsa.ipac.caltech.edu/TAP"
 ra, dec = float(sys.argv[1]), float(sys.argv[2])
 
 QUERY = f"""
-SELECT TOP 200 a.uri, p.time_bounds_lower, p.energy_bandpassname, p.calibrationlevel, a.producttype
+SELECT TOP 200 a.uri AS uri, p.time_bounds_lower AS mjd, p.energy_bandpassname AS band, p.calibrationlevel AS level, a.producttype AS ptype
 FROM spherex.artifact a JOIN spherex.plane p ON a.planeid = p.planeid
 WHERE CONTAINS(POINT('ICRS', {ra}, {dec}), p.poly) = 1
 ORDER BY p.time_bounds_lower
