@@ -19,3 +19,6 @@ data/index/
 tmp/
 *.log
 .playwright-mcp/
+
+# frontend dependencies (npm ci in web/)
+web/node_modules/
