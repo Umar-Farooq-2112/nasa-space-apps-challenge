@@ -6,6 +6,7 @@ Build/update (resumable, safe to re-run for new weekly data):
 """
 import sqlite3
 import sys
+from functools import lru_cache
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -18,6 +19,8 @@ import requests
 BUCKET = "https://nasa-irsa-spherex.s3.amazonaws.com"
 RELEASES = ("dr1", "qr3")   # dr1 = 2025 data, qr3 = 2026 quick release (qr2 is an older version of dr1)
 DB = Path(__file__).resolve().parent.parent / "data" / "index" / "spherex.sqlite"
+SEED = Path(__file__).resolve().parent.parent / "seed" / "index"   # compact copy shipped with the code (see export)
+COLS = "mjd, ra, dec, crpix1, crpix2, cd11, cd12, cd21, cd22"
 NPIX = 2040
 PIX_DEG = 6.15 / 3600
 NS = "{http://s3.amazonaws.com/doc/2006-03-01/}"
@@ -181,24 +184,48 @@ def build(detector: str = "D3", workers: int = 96, near_deg: float = 3.5):
     print("done", flush=True)
 
 
+def export(detector: str):
+    """Write a compact index for one detector to seed/index/<det>.npz (~10x smaller than the SQLite file),
+    so a deployment without the SQLite build can still search the whole sky."""
+    rows = _db().execute(f"SELECT key, {COLS} FROM images WHERE det=?", (detector,)).fetchall()
+    SEED.mkdir(parents=True, exist_ok=True)
+    m = np.array([r[1:] for r in rows], dtype=float)
+    np.savez_compressed(SEED / f"{detector}.npz", keys=np.array([r[0] for r in rows], dtype="S"),
+                        mjd=m[:, 0], geo=m[:, 1:].astype(np.float32))   # float32 = 0.1" on ra/dec, plenty
+    print(detector, len(rows))
+
+
+@lru_cache(maxsize=6)
+def _seed_rows(detector: str):
+    path = SEED / f"{detector}.npz"
+    if not path.exists():
+        return None
+    z = np.load(path)
+    return [k.decode() for k in z["keys"]], np.column_stack([z["mjd"], z["geo"].astype(float)])
+
+
+def _rows(detector: str):
+    """(keys, [[mjd, ra, dec, crpix1, crpix2, cd11, cd12, cd21, cd22], ...]) from the SQLite build if present,
+    else from the shipped compact copy; None if this detector is not indexed."""
+    if DB.exists():
+        rows = _db().execute(f"SELECT key, {COLS} FROM images WHERE det=?", (detector,)).fetchall()
+        return ([r[0] for r in rows], np.array([r[1:] for r in rows], dtype=float)) if rows else None
+    return _seed_rows(detector)
+
+
 def newest_mjd(detector: str):
     """Time of the newest indexed SPHEREx image for this detector (the latest NASA release we have), or None."""
-    if not DB.exists():
-        return None
-    return _db().execute("SELECT max(mjd) FROM images WHERE det=?", (detector,)).fetchone()[0]
+    r = _rows(detector)
+    return float(r[1][:, 0].max()) if r else None
 
 
 def find_images(ra: float, dec: float, detector: str, fov: float = 0.1):
     """[[irsa_uri, mjd], ...] of indexed images whose area fully contains the cutout, oldest first.
     None if the index has nothing for this detector (not built)."""
-    if not DB.exists():
+    r = _rows(detector)
+    if r is None:
         return None
-    rows = _db().execute("SELECT key, mjd, ra, dec, crpix1, crpix2, cd11, cd12, cd21, cd22 FROM images WHERE det=?",
-                         (detector,)).fetchall()
-    if not rows:
-        return None
-    keys = [r[0] for r in rows]
-    m = np.array([r[1:] for r in rows], dtype=float)
+    keys, m = r
     mjd, ra0, dec0 = m[:, 0], np.radians(m[:, 1]), np.radians(m[:, 2])
     a, d = np.radians(ra), np.radians(dec)
     # gnomonic (TAN) projection of the target onto each image plane, in degrees
@@ -219,4 +246,8 @@ def find_images(ra: float, dec: float, detector: str, fov: float = 0.1):
 
 
 if __name__ == "__main__":
-    build(sys.argv[1] if len(sys.argv) > 1 else "D3")
+    if sys.argv[1:2] == ["export"]:
+        for det in sys.argv[2:]:
+            export(det)
+    else:
+        build(sys.argv[1] if len(sys.argv) > 1 else "D3")

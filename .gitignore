@@ -12,6 +12,8 @@ data/cache/
 data/index/
 *.fits
 *.fits.gz
+# ...except the demo targets shipped for deployments (scripts/make_seed.py)
+!seed/cutouts/**/*.fits
 
 # scratch
 tmp/

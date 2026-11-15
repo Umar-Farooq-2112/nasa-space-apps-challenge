@@ -1,6 +1,8 @@
 """Read cached SPHEREx cutouts (data/raw/cutouts/<ra>_<dec>_<fov>/) and render them as PNG."""
 import io
 import logging
+import os
+import shutil
 import warnings
 from functools import lru_cache
 from pathlib import Path
@@ -13,7 +15,12 @@ from scipy import ndimage
 
 from .movers import PIX_ARCSEC, Frame
 
-CACHE = Path(__file__).resolve().parent.parent / "data" / "raw" / "cutouts_v2"   # v2: cutouts are 1.5x fov
+ROOT = Path(__file__).resolve().parent.parent
+ON_VERCEL = bool(os.environ.get("VERCEL"))   # serverless: the code folder is read-only, only /tmp is writable
+CACHE = Path("/tmp/charon/cutouts") if ON_VERCEL else ROOT / "data" / "raw" / "cutouts_v2"   # v2: cutouts are 1.5x fov
+SEED = ROOT / "seed" / "cutouts"   # the demo targets, shipped with the code so they open instantly
+if ON_VERCEL and SEED.exists() and not CACHE.exists():
+    shutil.copytree(SEED, CACHE, dirs_exist_ok=True)
 SCALE = 12  # upscale tiny (~59x59 px for 0.1 deg) images, smoothly (bicubic), so they look sharp on screen
 RENDER_VERSION = 8  # bump when render_png changes: browsers cache frame PNGs for a day
 

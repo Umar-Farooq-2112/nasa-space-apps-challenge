@@ -564,7 +564,7 @@ async function load() {
   $("title").textContent = state.name || "Custom position";
   $("coords").textContent = `RA ${(+state.ra).toFixed(4)}°, Dec ${(+state.dec).toFixed(4)}°`;
   syncUrl();
-  overlay('<div class="spinner"></div><p>Finding every SPHEREx photo of this spot...</p>');
+  overlay('<div class="spinner"></div><p>Finding every SPHEREx photo of this spot...</p><p class="hint" style="color:#AEB8CC">A spot nobody has opened before takes about a minute: we cut it out of each NASA photo, then keep it.</p>');
   while (true) {
     let d;
     try {

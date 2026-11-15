@@ -24,3 +24,16 @@ def test_find_images_inside_outside_and_dedupe(tmp_path, monkeypatch):
     assert [h[1] for h in hits] == [60700.0, 60800.0]          # oldest first, duplicate exposure dropped
     assert hits[0][0].startswith("ibe/data/spherex/dr1/level2/W2/")
     assert S.find_images(100.0, 20.0, "D5") is None             # nothing indexed for that detector
+
+
+def test_compact_seed_index_gives_same_results(tmp_path, monkeypatch):
+    """A deployment ships seed/index/<det>.npz instead of the SQLite build; search must not change."""
+    test_find_images_inside_outside_and_dedupe(tmp_path, monkeypatch)
+    expected = S.find_images(100.0, 20.0, "D3", fov=0.1)
+    monkeypatch.setattr(S, "SEED", tmp_path / "seed")
+    S.export("D3")
+    monkeypatch.setattr(S, "DB", tmp_path / "missing.sqlite")
+    S._seed_rows.cache_clear()
+    assert S.find_images(100.0, 20.0, "D3", fov=0.1) == expected
+    assert S.newest_mjd("D3") == 60950.0
+    S._seed_rows.cache_clear()

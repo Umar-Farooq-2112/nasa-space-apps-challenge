@@ -4,6 +4,7 @@ IRSA is often slow or returns 502, so every call retries, and the app runs fetch
 (`start`) that the frontend polls. Also used offline by scripts/fetch_all.py to pre-download demo targets."""
 import io
 import json
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import requests
+from astropy.io import fits
 from astropy.io.votable import parse_single_table
 
 from . import sky_index
@@ -85,7 +87,8 @@ def download(uri: str, mjd: float, ra: float, dec: float, fov: float, folder: Pa
         return False
     # unique temp name (app + fetch_all may download the same file at once); rename = never half a file
     tmp = dest.with_suffix(f".{threading.get_ident()}.part")
-    tmp.write_bytes(r.content)
+    with fits.open(io.BytesIO(r.content)) as h:   # drop the PSF table: 95% of the file, never used here
+        fits.HDUList([x for x in h if x.name != "EPSF"]).writeto(tmp)
     tmp.replace(dest)
     return True
 
@@ -116,7 +119,7 @@ def fetch(ra, dec, fov, detector, folder: Path, n: int = 20, job: dict | None = 
     picks = spread(images, n)
     job.update(state="downloading", total=len(picks), available=len(images),
                first_mjd=images[0][1] if images else None, last_mjd=images[-1][1] if images else None)
-    with ThreadPoolExecutor(4) as ex:
+    with ThreadPoolExecutor(8 if os.environ.get("VERCEL") else 4) as ex:
         list(ex.map(lambda im: download(im[0], im[1], ra, dec, fov, folder, detector), picks))
 
 
@@ -152,5 +155,8 @@ def start(ra, dec, fov, detector, folder: Path) -> dict:
             j.update(state="error", error=str(e))
         j["t"] = time.time()
 
-    threading.Thread(target=run, daemon=True).start()
+    if os.environ.get("VERCEL"):   # serverless may freeze threads after the response: fetch inside this request
+        run()
+    else:
+        threading.Thread(target=run, daemon=True).start()
     return j
