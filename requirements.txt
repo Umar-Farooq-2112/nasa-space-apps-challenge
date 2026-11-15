@@ -7,3 +7,5 @@ fastapi
 uvicorn
 scipy
 pytest
+python-multipart
+httpx

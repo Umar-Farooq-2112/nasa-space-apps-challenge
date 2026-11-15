@@ -16,3 +16,4 @@ data/cache/
 tmp/
 *.log
 .playwright-mcp/
+data/uploads/

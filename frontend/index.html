@@ -6,94 +6,184 @@
 <title>Mover Spotter</title>
 <link rel="icon" href="data:,">
 <style>
-  body { font-family: system-ui, sans-serif; background: #0b0e17; color: #e6e9f0; margin: 0; padding: 16px; }
-  h1 { font-size: 1.3rem; margin: 0 0 12px; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
-  input, select, button { background: #1a2033; color: inherit; border: 1px solid #33405f; border-radius: 6px; padding: 6px 10px; font: inherit; }
-  button { cursor: pointer; } button:hover { background: #26304d; }
-  input[type=number] { width: 110px; }
-  #view { image-rendering: pixelated; background: #000; border: 1px solid #33405f; max-width: 100%; }
+  :root { --bg:#0b0e17; --card:#121829; --line:#33405f; --text:#e6e9f0; --muted:#9aa6c4; --accent:#4de1ff; --warn:#ffd23f; --bad:#ff7a7a; --good:#7dffb0; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; max-width: 1100px; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; } h2 { font-size: 1rem; margin: 0 0 8px; color: var(--accent); }
+  a { color: var(--accent); } small, .muted { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 12px 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+  input, select, button { background: #1a2033; color: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; }
+  button { cursor: pointer; } button:hover { background: #26304d; } button.primary { background: #1d4f91; }
+  input[type=number] { width: 120px; } input[type=range] { padding: 0; }
+  #drop { border: 2px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center; color: var(--muted); }
+  #drop.over { border-color: var(--accent); color: var(--text); }
+  #log div { font-size: .9rem; padding: 2px 0; } .ok { color: var(--good); } .err { color: var(--bad); }
+  #view { image-rendering: pixelated; background: #000; border: 1px solid var(--line); max-width: 100%; display: block; }
   #slider { width: min(100%, 420px); }
-  #info { color: #9aa6c4; min-height: 1.4em; }
+  #info { color: var(--muted); min-height: 1.4em; }
+  details li { margin: 4px 0; } details { color: #c5cce0; line-height: 1.5; }
 </style>
 </head>
 <body>
-<h1>Mover Spotter &mdash; sky patch player</h1>
+<h1>Mover Spotter</h1>
+<div class="muted">Upload a series of sky images taken on different dates. The tool plays them like a flipbook and circles anything that moves.
+  <a href="guide.html">Where do I get images? (step-by-step, no code)</a></div>
 
-<div class="row" id="presets"></div>
-<div class="row">
-  RA <input id="ra" type="number" step="any">
-  Dec <input id="dec" type="number" step="any">
-  FOV
-  <select id="fov"><option value="0.05">0.05&deg; (sharp)</option><option value="0.1" selected>0.1&deg;</option><option value="0.2">0.2&deg; (wide)</option></select> <small style="color:#9aa6c4">(FOV not active yet)</small>
-  Data
-  <select id="det"><option value="W2" selected>WISE W2 (2010-2021)</option><option value="all">all (mixed)</option><option>D1</option><option>D2</option><option>D3</option><option>D4</option><option>D5</option><option>D6</option></select>
-  <button id="go">Load</button>
+<div class="card">
+  <h2>1. Dataset</h2>
+  <div class="row">
+    <select id="ds"></select>
+    <button id="newBtn">New dataset</button>
+    <button id="delBtn">Delete</button>
+    <span id="dsInfo" class="muted"></span>
+  </div>
+  <div class="row" id="newForm" style="display:none">
+    Name <input id="newName" placeholder="e.g. my brown dwarf" size="22">
+    RA <input id="newRa" type="number" step="any" placeholder="optional">
+    Dec <input id="newDec" type="number" step="any" placeholder="optional">
+    <button id="createBtn" class="primary">Create</button>
+    <small>RA/Dec (degrees) of your target. Needed only for big images, which are cropped around it.</small>
+  </div>
 </div>
 
-<canvas id="view" width="348" height="354"></canvas>
-<div class="row">
-  <button id="play">Play</button>
-  <input id="slider" type="range" min="0" max="0" value="0">
+<div class="card">
+  <h2>2. Add images (FITS files)</h2>
+  <div id="drop">Drop FITS files here, or <label style="text-decoration:underline;cursor:pointer">choose files<input id="files" type="file" multiple accept=".fits,.fit,.fts" hidden></label></div>
+  <div id="log"></div>
 </div>
-<canvas id="curve" width="420" height="140" style="display:none;background:#10162a;border:1px solid #33405f;margin-top:8px;max-width:100%"></canvas>
-<div id="info">Pick a target or enter coordinates.</div>
-<div id="found" style="margin:6px 0"></div>
-<details open style="max-width:640px;color:#c5cce0;line-height:1.5;margin-top:10px">
-<summary style="cursor:pointer;color:#e6e9f0"><b>How to read this</b></summary>
+
+<div class="card">
+  <h2>3. Look at it</h2>
+  <div class="row">
+    Band <select id="band"></select>
+    View <select id="mode">
+      <option value="flip">Flipbook (play through time)</option>
+      <option value="composite">Time-colour (one picture, blue = old, red = new)</option>
+      <option value="diff">Difference (newest minus oldest)</option>
+    </select>
+    Sensitivity <input id="sens" type="range" min="3" max="8" step="0.5" value="4"> <span id="sensVal">4</span>&sigma;
+    <button id="go" class="primary">Show</button>
+  </div>
+  <canvas id="view" width="600" height="600"></canvas>
+  <div class="row" id="playRow">
+    <button id="play">Play</button>
+    <input id="slider" type="range" min="0" max="0" value="0">
+  </div>
+  <canvas id="curve" width="420" height="140" style="display:none;background:#10162a;border:1px solid var(--line);max-width:100%"></canvas>
+  <div id="info">Create or choose a dataset, add images, then press Show.</div>
+  <div id="found" style="margin:6px 0"></div>
+</div>
+
+<details open>
+<summary style="cursor:pointer;color:var(--text)"><b>How to read this</b></summary>
 <ul>
-  <li><b>The picture</b> is a small patch of sky. Each frame is a different date (shown under the picture). It plays like a flipbook.</li>
-  <li><b>Stars stay in place</b> from frame to frame. Something that <i>drifts</i> is moving across the sky: a nearby star, brown dwarf, asteroid or comet.</li>
-  <li><b>Blue circle + trail</b> = Mover Spotter found something whose position changes steadily. The label gives its speed in arcseconds per year. A circle also has to appear in most frames, so one-off specks are ignored.</li>
-  <li><b>Click a circle</b> to turn it yellow and see its brightness over time (the graph). A flat line means a steady object; a wiggle can mean a variable star or noise.</li>
-  <li><b>Data:</b> WISE infrared images (the sky survey before SPHEREx), one frame per ~6-month epoch. SPHEREx data fits the same way once its archive (IRSA) is back online.</li>
-  <li><b>Test it:</b> click <b>WISE 0855</b>. It is a very cold brown dwarf that moves about 8 arcseconds per year, so the circle should drift left to right while the stars stay put.</li>
-</ul></details>
+  <li><b>Flipbook:</b> each frame is a different date (shown under the picture). Stars stay in place; something that <i>drifts</i> is moving across the sky.</li>
+  <li><b>Blue circle + trail:</b> Mover Spotter found a source whose position changes steadily over time. The label is its speed in arcseconds per year. It must appear in most frames, so one-off specks are ignored.</li>
+  <li><b>Click a circle</b> to turn it yellow and see its brightness over time.</li>
+  <li><b>Time-colour:</b> every date gets a colour, all frames are stacked. Fixed stars come out white. A mover leaves a rainbow trail, blue at its old positions and red at its newest.</li>
+  <li><b>Difference:</b> newest third minus oldest third. Fixed stars cancel. A mover is a <span style="color:#6c8cff">blue</span> spot where it was and a <span style="color:#ff6c6c">red</span> spot where it is now.</li>
+  <li><b>Sensitivity:</b> lower finds fainter movers but also more false alarms.</li>
+  <li><b>Band:</b> use one band at a time. Different bands show different stars, so mixing them looks like movement.</li>
+</ul>
+</details>
 
 <script>
 const $ = id => document.getElementById(id);
 const canvas = $("view"), ctx = canvas.getContext("2d");
-let frames = [], imgs = [], idx = 0, timer = null, movers = [], selected = -1, SCALE = 6;
+let datasets = [], frames = [], imgs = [], idx = 0, timer = null, movers = [], selected = -1, mode = "flip", still = null;
 
-function show(i) {
-  if (!frames.length) return;
-  idx = (i + frames.length) % frames.length;           // loop
-  const im = imgs[idx];
-  canvas.width = im.naturalWidth; canvas.height = im.naturalHeight;
-  ctx.drawImage(im, 0, 0);
-  drawMovers();
-  $("slider").value = idx;
-  const f = frames[idx];
-  $("info").textContent = `Frame ${idx + 1}/${frames.length}  |  ${f.date.replace("T", " ").slice(0, 19)} UTC  |  ${f.detector}`;
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
 }
+const ds = () => $("ds").value;
 
-// FITS y is flipped in the PNG: canvas_y = height - (py + 0.5) * SCALE
-function pos(p, h) { return [(p.px + 0.5) * SCALE, h - (p.py + 0.5) * SCALE]; }
+// ---------- datasets ----------
+async function refreshDatasets(select) {
+  datasets = await api("/api/datasets");
+  $("ds").innerHTML = datasets.map(d => `<option value="${d.id}">${d.name} (${d.n_frames} images)</option>`).join("") || "<option value=''>(none yet)</option>";
+  if (select) $("ds").value = select;
+  updateDsInfo();
+}
+function updateDsInfo() {
+  const d = datasets.find(x => x.id === ds());
+  $("dsInfo").textContent = d ? `centre: ${d.centre ? d.centre[0].toFixed(4) + ", " + d.centre[1].toFixed(4) : "set by first image"}  |  bands: ${Object.entries(d.bands).map(([b, n]) => b + " x" + n).join(", ") || "none"}` : "";
+  $("band").innerHTML = d ? Object.keys(d.bands).map(b => `<option>${b}</option>`).join("") : "";
+}
+$("ds").onchange = updateDsInfo;
+$("newBtn").onclick = () => { $("newForm").style.display = $("newForm").style.display === "none" ? "flex" : "none"; };
+$("createBtn").onclick = async () => {
+  try {
+    const body = { name: $("newName").value || "dataset", ra: $("newRa").value === "" ? null : +$("newRa").value, dec: $("newDec").value === "" ? null : +$("newDec").value };
+    const d = await api("/api/datasets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    $("newForm").style.display = "none"; await refreshDatasets(d.id);
+  } catch (e) { alert(e.message); }
+};
+$("delBtn").onclick = async () => {
+  if (!ds() || !confirm("Delete this dataset and its images?")) return;
+  await api(`/api/datasets/${ds()}`, { method: "DELETE" }); await refreshDatasets();
+};
 
+// ---------- upload ----------
+async function upload(fileList) {
+  if (!ds()) { alert("Create a dataset first."); return; }
+  const log = $("log"); log.innerHTML = "";
+  const files = [...fileList];
+  for (let i = 0; i < files.length; i += 4) {                  // small batches so progress is visible
+    const fd = new FormData(); files.slice(i, i + 4).forEach(f => fd.append("files", f));
+    try {
+      const j = await api(`/api/datasets/${ds()}/files`, { method: "POST", body: fd });
+      j.results.forEach(r => log.insertAdjacentHTML("beforeend", r.ok
+        ? `<div class="ok">OK ${r.name}: ${r.band}, ${r.date}${r.cropped ? ", cropped to " + r.size.join("x") : ""}</div>`
+        : `<div class="err">Skipped ${r.name}: ${r.error}</div>`));
+    } catch (e) { log.insertAdjacentHTML("beforeend", `<div class="err">${e.message}</div>`); }
+  }
+  await refreshDatasets(ds());
+}
+$("files").onchange = e => upload(e.target.files);
+["dragover", "dragenter"].forEach(t => $("drop").addEventListener(t, e => { e.preventDefault(); $("drop").classList.add("over"); }));
+["dragleave", "drop"].forEach(t => $("drop").addEventListener(t, e => { e.preventDefault(); $("drop").classList.remove("over"); }));
+$("drop").addEventListener("drop", e => upload(e.dataTransfer.files));
+
+// ---------- drawing ----------
+function pos(p) { const s = frames[idx].scale; return [(p.px + 0.5) * s, canvas.height - (p.py + 0.5) * s]; }
+
+function paint() {
+  if (mode === "flip") {
+    const im = imgs[idx]; canvas.width = im.naturalWidth; canvas.height = im.naturalHeight; ctx.drawImage(im, 0, 0);
+    const f = frames[idx];
+    $("info").textContent = `Frame ${idx + 1}/${frames.length}  |  ${f.date.replace("T", " ")} UTC  |  ${f.band}`;
+    $("slider").value = idx;
+  } else {
+    canvas.width = still.naturalWidth; canvas.height = still.naturalHeight; ctx.drawImage(still, 0, 0);
+    idx = frames.length - 1;
+    $("info").textContent = `${mode === "composite" ? "Time-colour picture" : "Difference picture"} of ${frames.length} frames, ${frames[0].date.slice(0, 10)} to ${frames[idx].date.slice(0, 10)}`;
+  }
+  drawMovers();
+}
 function drawMovers() {
-  const h = canvas.height;
   movers.forEach((m, k) => {
     const col = k === selected ? "#ffd23f" : "#4de1ff";
-    ctx.strokeStyle = col; ctx.lineWidth = 1.5;
-    ctx.beginPath();                                        // trail up to current frame
-    m.points.slice(0, idx + 1).forEach((p, i) => { const [x, y] = pos(p, h); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath();
+    m.points.slice(0, idx + 1).forEach((p, i) => { const [x, y] = pos(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
     ctx.stroke();
-    const [x, y] = pos(m.points[idx], h);
-    ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.stroke();  // circle on the mover
-    ctx.fillStyle = col; ctx.font = "12px sans-serif";
+    const [x, y] = pos(m.points[idx]);
+    ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.stroke();
+    ctx.fillStyle = col; ctx.font = "13px sans-serif";
     ctx.fillText(`#${k + 1} ${m.rate_arcsec_per_year.toFixed(1)}"/yr`, x + 16, y - 4);
   });
 }
-
 function drawCurve() {
   const c = $("curve"), g = c.getContext("2d");
   g.clearRect(0, 0, c.width, c.height);
   if (selected < 0) { c.style.display = "none"; return; }
   c.style.display = "block";
-  const pts = movers[selected].points.filter(p => p.flux !== null);
-  const v = pts.map(p => p.flux), lo = Math.min(...v), hi = Math.max(...v) || 1;
+  const pts = movers[selected].points.filter(p => p.flux !== null), v = pts.map(p => p.flux);
+  const lo = Math.min(...v), hi = Math.max(...v);
   g.fillStyle = "#9aa6c4"; g.font = "11px sans-serif";
-  g.fillText(`Mover #${selected + 1}: brightness over time (3x3 px sum, arbitrary units)`, 8, 14);
+  g.fillText(`Mover #${selected + 1}: brightness over time (3x3 px sum, image units)`, 8, 14);
   g.strokeStyle = "#ffd23f"; g.beginPath();
   pts.forEach((p, i) => {
     const x = 10 + i * (c.width - 20) / Math.max(pts.length - 1, 1);
@@ -102,71 +192,58 @@ function drawCurve() {
   });
   g.stroke();
 }
-
-canvas.onclick = e => {                                    // click a mover to see its light curve
-  const r = canvas.getBoundingClientRect(), sx = canvas.width / r.width;
-  const cx = (e.clientX - r.left) * sx, cy = (e.clientY - r.top) * sx;
+canvas.onclick = e => {
+  const r = canvas.getBoundingClientRect(), k = canvas.width / r.width;
+  const cx = (e.clientX - r.left) * k, cy = (e.clientY - r.top) * k;
   let best = -1, bd = 30;
-  movers.forEach((m, k) => { const [x, y] = pos(m.points[idx], canvas.height); const d = Math.hypot(x - cx, y - cy); if (d < bd) { bd = d; best = k; } });
-  selected = best; drawCurve(); show(idx);
+  movers.forEach((m, i) => { const [x, y] = pos(m.points[idx]); const d = Math.hypot(x - cx, y - cy); if (d < bd) { bd = d; best = i; } });
+  selected = best; drawCurve(); paint();
 };
-
-async function loadMovers(ra, dec, det) {
-  movers = []; selected = -1; drawCurve(); $("found").textContent = "Looking for movers...";
-  if (det === "all") { $("found").textContent = "Mover Spotter needs one data type at a time (not \"all\")."; return; }
-  const r = await fetch(`/api/movers?ra=${ra}&dec=${dec}&detector=${det}`);
-  if (!r.ok) return;
-  const d = await r.json();
-  movers = d.movers; SCALE = d.scale || 6;
-  const fnd = $("found");
-  if (d.note) fnd.textContent = d.note;
-  else if (!movers.length) fnd.textContent = "Mover Spotter: no movers detected in this patch.";
-  else fnd.innerHTML = "Mover Spotter found " + movers.length + " mover(s): " + movers.map((m, k) =>
-    `<b>#${k + 1}</b> ${m.rate_arcsec_per_year.toFixed(1)}\"/yr, seen in ${m.n_detections}/${d.n_frames} frames`).join("; ") + ". Click a circle for its brightness curve.";
-  show(idx);
-}
-
 function setPlaying(on) {
   clearInterval(timer); timer = null;
-  if (on) timer = setInterval(() => show(idx + 1), 400);
+  if (on) timer = setInterval(() => { idx = (idx + 1) % frames.length; paint(); }, 400);
   $("play").textContent = on ? "Pause" : "Play";
 }
-
-async function load() {
-  setPlaying(false);
-  const ra = $("ra").value, dec = $("dec").value, fov = $("fov").value, det = $("det").value;
-  history.replaceState(null, "", `?ra=${ra}&dec=${dec}&fov=${fov}&detector=${det}`);   // shareable URL
-  $("info").textContent = "Loading...";
-  const r = await fetch(`/api/frames?ra=${ra}&dec=${dec}&fov=${fov}&detector=${det}`);
-  if (!r.ok) { $("info").textContent = (await r.json()).detail || "Error"; frames = []; return; }
-  frames = (await r.json()).frames;
-  if (!frames.length) { $("info").textContent = "No frames for this detector."; return; }
-  imgs = await Promise.all(frames.map(f => new Promise(res => {
-    const im = new Image(); im.onload = () => res(im); im.src = f.png_url;
-  })));
-  $("slider").max = frames.length - 1;
-  show(0); setPlaying(true);
-  loadMovers(ra, dec, det);
-}
-
-$("go").onclick = load;
 $("play").onclick = () => setPlaying(!timer);
-$("slider").oninput = e => { setPlaying(false); show(+e.target.value); };
+$("slider").oninput = e => { setPlaying(false); idx = +e.target.value; paint(); };
+$("sens").oninput = e => { $("sensVal").textContent = e.target.value; };
+
+// ---------- load / show ----------
+const loadImg = url => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error("image failed to load")); im.src = url; });
+
+async function show() {
+  setPlaying(false); movers = []; selected = -1; drawCurve(); $("found").textContent = "";
+  if (!ds()) { $("info").textContent = "Create a dataset first."; return; }
+  const band = $("band").value, q = band ? `?band=${encodeURIComponent(band)}` : "";
+  mode = $("mode").value;
+  history.replaceState(null, "", `?ds=${ds()}&band=${band}&mode=${mode}`);
+  $("info").textContent = "Loading...";
+  try {
+    frames = (await api(`/api/datasets/${ds()}/frames${q}`)).frames;
+    if (!frames.length) { $("info").textContent = "No images in this dataset/band yet. Add FITS files above."; return; }
+    $("playRow").style.display = mode === "flip" ? "flex" : "none";
+    if (mode === "flip") imgs = await Promise.all(frames.map(f => loadImg(f.png_url)));
+    else if (frames.length < 2) { $("info").textContent = "Need at least 2 images."; return; }
+    else still = await loadImg(`/api/datasets/${ds()}/${mode === "composite" ? "composite" : "difference"}.png${q}`);
+    $("slider").max = frames.length - 1; idx = 0; paint();
+    if (mode === "flip") setPlaying(true);
+    $("found").textContent = "Looking for movers...";
+    const d = await api(`/api/datasets/${ds()}/movers${q}${q ? "&" : "?"}nsigma=${$("sens").value}`);
+    movers = d.movers;
+    $("found").innerHTML = d.note ? d.note : !movers.length ? "Mover Spotter: no movers detected." :
+      `Mover Spotter found ${movers.length} mover(s): ` + movers.map((m, k) =>
+        `<b>#${k + 1}</b> ${m.rate_arcsec_per_year.toFixed(1)}"/yr, seen in ${m.n_detections}/${d.n_frames} frames`).join("; ") + ". Click a circle for its brightness curve.";
+    paint();
+  } catch (e) { $("info").textContent = "Error: " + e.message; }
+}
+$("go").onclick = show;
 
 (async () => {
-  const targets = await (await fetch("/api/targets")).json();
-  targets.forEach(t => {
-    const b = document.createElement("button"); b.textContent = t.name;
-    b.onclick = () => { $("ra").value = t.ra; $("dec").value = t.dec; load(); };
-    $("presets").appendChild(b);
-  });
   const p = new URLSearchParams(location.search);
-  if (p.has("ra") && p.has("dec")) {
-    $("ra").value = p.get("ra"); $("dec").value = p.get("dec");
-    if (p.has("fov")) $("fov").value = p.get("fov");
-    if (p.has("detector")) $("det").value = p.get("detector");
-    load();
-  }
+  await refreshDatasets(p.get("ds"));
+  if (p.get("band")) $("band").value = p.get("band");
+  if (p.get("mode")) $("mode").value = p.get("mode");
+  if (p.get("ds")) show();
 })();
 </script>
 </body>

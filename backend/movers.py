@@ -11,6 +11,7 @@ Steps (all positions in arcsec offsets from the field centre, so frames need no 
 from dataclasses import dataclass
 
 import numpy as np
+from astropy.wcs.utils import proj_plane_pixel_scales
 from scipy import ndimage
 
 PIX_ARCSEC = 6.15
@@ -113,9 +114,25 @@ def find_tracks(t, dets, tol=4.0, max_rate=300.0, min_frames=4):
     return tracks
 
 
-def spot_movers(frames, centre, min_frames=4, nsigma=5.0, tol=4.0, max_rate=300.0,
-                min_disp=3.0, min_sig=4.0):
-    """Main entry. Returns list of track dicts (movers only) with per-frame pixel positions + flux."""
+def pixel_scale(frame):
+    """Mean pixel size in arcsec, from the frame's WCS."""
+    return float(np.mean(proj_plane_pixel_scales(frame.wcs)) * 3600.0)
+
+
+def spot_movers(frames, centre, min_frames=4, nsigma=5.0, tol=None, max_rate=None,
+                min_disp=None, min_sig=4.0):
+    """Main entry. Returns list of track dicts (movers only) with per-frame pixel positions + flux.
+    Unless given, the limits come from the data itself (nothing is tuned to one target):
+      tol      = 2 pixels (match radius)
+      min_disp = half a pixel (a mover must travel at least this far over the whole time span)
+      max_rate = fast enough to cross half the field during the time span
+    """
+    scale = pixel_scale(frames[0])
+    span_days = max(max(f.mjd for f in frames) - min(f.mjd for f in frames), 1e-3)
+    field = max(frames[0].image.shape) * scale
+    tol = 2.0 * scale if tol is None else tol
+    min_disp = 0.5 * scale if min_disp is None else min_disp
+    max_rate = 0.5 * field / span_days if max_rate is None else max_rate
     frames = sorted(frames, key=lambda f: f.mjd)
     t = np.array([f.mjd for f in frames]) - frames[0].mjd
     raw = [detect_sources(f.image, nsigma) for f in frames]
@@ -150,7 +167,7 @@ def spot_movers(frames, centre, min_frames=4, nsigma=5.0, tol=4.0, max_rate=300.
         rate = float(np.hypot(vx, vy))
         disp = rate * span
         denom = np.sqrt(np.sum((t[fs] - np.mean(t[fs])) ** 2))
-        err = max(rms, 0.3) / denom if denom > 0 else np.inf  # floor: centroid noise ~0.3 arcsec
+        err = max(rms, 0.05 * scale) / denom if denom > 0 else np.inf  # floor: centroid noise ~1/20 pixel
         if disp < min_disp or rate / err < min_sig:
             continue
         pts = []
