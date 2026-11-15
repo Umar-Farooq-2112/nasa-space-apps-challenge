@@ -9,11 +9,12 @@ from astropy.io import fits
 from PIL import Image
 
 ra, dec = sys.argv[1], sys.argv[2]
+det = sys.argv[3] if len(sys.argv) > 3 else ""   # e.g. D3: skip other detectors
 src = Path(f"data/raw/cutouts/{ra}_{dec}")
 dst = Path(f"data/frames/{ra}_{dec}")
 dst.mkdir(parents=True, exist_ok=True)
 
-for f in sorted(src.glob("*.fits")):
+for f in sorted(src.glob(f"*_{det}_*.fits" if det else "*.fits")):
     with fits.open(f) as h:
         img = h["IMAGE"].data.astype(float)
         flags = h["FLAGS"].data

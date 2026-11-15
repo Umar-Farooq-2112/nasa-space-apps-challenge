@@ -3,6 +3,7 @@ Run from the repo root. Slow because IRSA is often busy; safe to re-run (skips e
 """
 import subprocess
 import sys
+from pathlib import Path
 
 from astropy.coordinates import SkyCoord
 
@@ -33,7 +34,13 @@ for name, spec in TARGETS.items():
             continue
         ra, dec = round(c.ra.deg, 4), round(c.dec.deg, 4)
     print(f"=== {name}: RA {ra} Dec {dec}", flush=True)
-    for script, extra in (("find_images.py", [det]), ("download_cutouts.py", ["0.1", n])):
-        args = [py, "-I", f"scripts/{script}", str(ra), str(dec)] + extra
-        subprocess.run(args, check=False)
-    subprocess.run([py, "-I", "scripts/fits_to_png.py", str(ra), str(dec)], check=False)
+    csv = Path(f"data/raw/images_{float(ra)}_{float(dec)}.csv")
+    csv.unlink(missing_ok=True)   # never reuse a stale list (may hold other detectors)
+    for attempt in range(5):
+        if subprocess.run([py, "-I", "scripts/find_images.py", str(ra), str(dec), det]).returncode == 0:
+            break
+    else:
+        print("giving up on", name, flush=True)
+        continue
+    subprocess.run([py, "-I", "scripts/download_cutouts.py", str(ra), str(dec), "0.1", n])
+    subprocess.run([py, "-I", "scripts/fits_to_png.py", str(ra), str(dec), det], check=False)
