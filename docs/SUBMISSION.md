@@ -95,5 +95,5 @@ All data, images and scientific results come from NASA SPHEREx and the Gaia cata
 - SPHEREx Explanatory Supplement: https://irsa.ipac.caltech.edu/data/SPHEREx/docs/SPHEREx_Expsupp_QR.pdf
 - IRSA SPHEREx tutorials: https://caltech-ipac.github.io/irsa-tutorials/
 - Astropy, NumPy, SciPy, Pillow, FastAPI, Uvicorn (open-source Python libraries)
-- Instrument Sans font (Google Fonts, SIL Open Font License)
+- Newsreader and Geist fonts (Google Fonts, SIL Open Font License)
 - Backyard Worlds: Planet 9 (inspiration for the citizen-science approach): https://backyardworlds.org
