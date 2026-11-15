@@ -111,4 +111,4 @@ def resolve_name(name: str = Query(min_length=1, max_length=100)):
         raise HTTPException(503, str(e))
 
 
-app.mount("/", StaticFiles(directory=Path(__file__).resolve().parent.parent / "frontend", html=True))
+app.mount("/", StaticFiles(directory=Path(__file__).resolve().parent.parent / "public", html=True))   # on Vercel, public/ is served by the CDN instead

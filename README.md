@@ -49,7 +49,7 @@ Share a view with URL parameters: `/?ra=133.7598&dec=-7.2422&fov=0.1&detector=D3
 - `backend/movers.py` the tracker: detect sources, link them into straight-line tracks over time, remove each frame's pointing shift using static stars, keep tracks that really move.
   Tested on synthetic data (tests/) and on real SPHEREx data (see Status).
 - `scripts/fetch_all.py` pre-downloads the demo targets with the same code as the app, so the demo works when IRSA is down.
-- `frontend/index.html` single-file app (no build step): search, presets, wavelength strip, player, changes-only mode, mover cards, brightness chart, frame details.
+- `public/index.html` single-file app, served by Vercel's CDN (no build step): search, presets, wavelength strip, player, changes-only mode, mover cards, brightness chart, frame details.
 
 ## Status
 

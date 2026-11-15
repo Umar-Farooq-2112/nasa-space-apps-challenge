@@ -230,7 +230,7 @@
   <aside class="card panel" aria-label="Choose what to look at">
     <section>
       <h2><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>Start with a famous moving star</h2>
-      <div class="targets" id="targets"></div>
+      <div class="targets" id="targets"><p class="hint" style="padding:10px 0">Loading the star list...</p></div>
     </section>
     <section class="field">
       <h2><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg>Or go to any spot in the sky</h2>
@@ -519,7 +519,7 @@ function intro() {
     </ol>
     <button class="btn btn-primary" id="intro-go">Show me Barnard's Star, the fastest star in the sky</button>
   </div>`);
-  $("intro-go").onclick = () => pickTarget(targets.find(t => t.id === "barnards_star"));
+  $("intro-go").onclick = async () => pickTarget((await targetsReady).find(t => t.id === "barnards_star"));
 }
 const query = () => `ra=${state.ra}&dec=${state.dec}&fov=${state.fov}&detector=${state.det}`;
 
@@ -701,6 +701,7 @@ document.addEventListener("keydown", e => {
 });
 
 /* ---------- start ---------- */
+const targetsReady = fetch("/api/targets").then(r => r.json());
 const KIND = {
   wise0855: ["Brown dwarf", "bd"], eps_indi_b: ["Brown dwarf", "bd"], luhman16: ["Brown dwarf", "bd"],
   barnards_star: ["Fast star", "st"], kapteyn: ["Fast star", "st"], groombridge: ["Fast star", "st"], wolf359: ["Fast star", "st"],
@@ -716,7 +717,8 @@ const DESCRIBE = {
 (async () => {
   setSeg("fov", state.fov); setSeg("speed", state.speed); setSeg("mode", state.mode); setDet(state.det);
   $("mode-hint").textContent = MODE_HINT[state.mode];
-  targets = await (await fetch("/api/targets")).json();
+  if (!new URLSearchParams(location.search).has("ra")) intro();   // show the intro at once; the star list can take a few seconds on a cold server
+  targets = await targetsReady;
   $("targets").innerHTML = targets.map(t => `<button class="target" data-id="${t.id}" aria-pressed="false"><b>${esc(t.name)}</b><i class="kind ${KIND[t.id][1]}">${KIND[t.id][0]}</i><span>${DESCRIBE[t.id] || ""}</span></button>`).join("");
   for (const b of $("targets").children) b.onclick = () => pickTarget(targets.find(t => t.id === b.dataset.id));
   const p = new URLSearchParams(location.search);
@@ -732,7 +734,7 @@ const DESCRIBE = {
     $("ra").value = state.ra; $("dec").value = state.dec;
     setSeg("fov", state.fov); setSeg("mode", state.mode); setDet(state.det); $("mode-hint").textContent = MODE_HINT[state.mode];
     load();
-  } else intro();
+  }
 })();
 </script>
 </body>
