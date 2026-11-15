@@ -1,86 +1,134 @@
 # Charon
 
-NASA Space Apps 2026 challenge "Planet X and SPHEREx".
-Named after Charon, the moon of Pluto found in 1978 when a bump on Pluto's image was seen to move between photos.
-A web tool that shows SPHEREx images of a sky patch as a short movie and automatically circles objects that move between frames (brown dwarfs, asteroids, comets).
+**Find what moves in NASA's SPHEREx sky.**
+Pick any spot in the sky, watch a year of real SPHEREx infrared photos of it as a flip-book, and let Charon find, measure and verify the objects that move.
 
-![Charon finding Epsilon Indi B in real SPHEREx data](docs/screenshot.png)
+Built for the NASA Space Apps Challenge 2026, challenge "Planet X and SPHEREx".
 
-Live app: https://nasa-space-apps-challenge-ten.vercel.app
+| | |
+| --- | --- |
+| **Live app** | [nasa-space-apps-challenge-ten.vercel.app](https://nasa-space-apps-challenge-ten.vercel.app) |
+| **Demo video (30 s)** | [docs/charon_demo.mp4](docs/charon_demo.mp4) |
+| **Code** | [github.com/Umar-Farooq-2112/nasa-space-apps-challenge](https://github.com/Umar-Farooq-2112/nasa-space-apps-challenge) |
 
-Demo video (30 s): [docs/charon_demo.mp4](docs/charon_demo.mp4)
+![Charon finding the brown dwarf Epsilon Indi B in real SPHEREx data, with its speed checked against Gaia and its spectrum](docs/screenshots/overview.png)
 
-## Features
+*Epsilon Indi B, a brown dwarf 12 light-years away, found in 20 SPHEREx photos taken between April 2025 and September 2026.
+Charon measures 4.35 ± 0.24 arcseconds per year toward 127°, within 7% and 5° of the Gaia catalog, and builds its spectrum from the photos.*
 
-- Search any star by name (CDS Sesame, corrected for proper motion to 2026) or type RA/Dec.
-- A year of SPHEREx images of that spot, aligned north-up, played as a movie with speed control and keyboard keys.
-- "Changes only" mode: each image minus the median sky, so still stars vanish and movers stand out.
-- "Deep view": all images stacked (median), about 3.5x less noise, so faint objects appear. Images are upscaled smoothly (bicubic) instead of as blocky pixels.
-- Shows how fresh the data is: the newest NASA release in the index (currently up to 5 Oct 2026) and the newest photo of the chosen spot.
-- Moving-object tracker: finds and circles moving objects, draws their path, reports speed and direction, and plots their brightness.
-- All six SPHEREx detectors (0.75 to 5.0 µm) on a wavelength strip; cold brown dwarfs like WISE 0855 only show up at the long end.
-- Field of view 3, 6 or 12 arcmin; shareable links that restore the exact view; raw FITS download for every image.
-- Nine presets: the five challenge targets plus Kapteyn's Star, Groombridge 1830, Wolf 359 and Luhman 16.
+## Why the name
 
-## Quick start
+In 1978 James Christy noticed a small bump on Pluto's image that moved from one photo to the next.
+It was Charon, Pluto's largest moon.
+This app does the same thing at sky scale: line up photos taken months apart and look for the dot that moved.
+
+## What it does
+
+- **Any spot in the sky.** Search a star by name (positions corrected for proper motion to 2026) or type RA and Dec, or start from nine famous moving stars and brown dwarfs.
+- **A year as a movie.** Up to 20 SPHEREx photos spread over the whole time range, aligned north-up so still stars stay put and movers visibly shift.
+- **Three ways to look.** *Photos* as NASA took them, *Changes only* (each photo minus the average sky, so still stars vanish) and *Deep view* (all photos stacked, about 3.5 times less noise).
+- **Automatic mover detection.** Each moving object is circled and its path drawn, with speed, direction, error bar, confidence and an everyday comparison ("like a coin seen from 1.1 km away sliding its own width in a year").
+- **Checked against Gaia.** When the mover is a known star, its measured motion is compared with the ESA Gaia catalog via SIMBAD.
+- **Brightness and spectrum.** SPHEREx sees a slightly different wavelength in every photo, so a year of photos gives each mover a spectrum, which shows whether it is a cold brown dwarf.
+- **All six infrared detectors** (0.75 to 5.0 micrometres), three field sizes, a random-spot explorer and full-screen view.
+- **Open and shareable.** Every view has a link, every photo can be downloaded as the original FITS file, and every measurement can be exported as CSV.
+- **Always current.** Uses NASA's newest public SPHEREx release (currently up to 5 October 2026) and downloads new photos live for any spot.
+
+## Screenshots
+
+| Full view | Changes only |
+| --- | --- |
+| ![Full-screen view of Epsilon Indi B with the player controls](docs/screenshots/full-view.png) | ![Changes-only mode on Barnard's Star: still stars vanish, the moving star stands out](docs/screenshots/changes-only.png) |
+
+| First visit | Phone |
+| --- | --- |
+| ![The intro explains in three steps what the app does](docs/screenshots/intro.png) | ![Charon on a phone](docs/screenshots/phone.png) |
+
+## Results on real SPHEREx data
+
+20 photos per target, about a year apart from first to last, detector D3 unless noted.
+
+| Target | Charon measured | Gaia catalog | Verdict |
+| --- | --- | --- | --- |
+| Barnard's Star | 8.7″/yr toward 351° | 10.4″/yr toward 356° | found |
+| Epsilon Indi B | 4.35 ± 0.24″/yr toward 127° | 4.7″/yr toward 122° | found, within 7% |
+| Kapteyn's Star | 9.1″/yr toward 131° | 8.6″/yr toward 131° | found, within 5% |
+| Groombridge 1830 | 5.7″/yr toward 157° | 7.1″/yr toward 146° | found |
+| Luhman 16 | 3.1″/yr toward 271° | 2.8″/yr toward 277° | found |
+| Wolf 359 (fetched live, never cached) | 5.3″/yr toward 244° | 4.7″/yr toward 235° | found |
+| RW Aurigae, R Draconis (variable stars) | no movers | about 0.02″/yr | correct |
+| WISE 0855 (D6) | visible in the movie, too faint to track in single photos | 8.1″/yr | next step: track on stacked photos |
+
+The spectrum of Epsilon Indi B shows the water and methane dip near 1.8 to 1.95 micrometres that marks a cold brown dwarf.
+
+## How it works
+
+1. **Find the photos.** NASA's SPHEREx search service was down during the hackathon, so Charon has its own index of every SPHEREx image (about 270,000 per detector), built from IRSA's public copy on AWS by reading only the pointing data in each image header.
+   A whole-sky search takes under a second, and re-running the index picks up each new weekly release.
+2. **Download small cutouts.** For a new spot, up to 20 cutouts are cut from NASA's 65 MB images by IRSA's cutout service and cached, so the next visit is instant.
+3. **Align.** Every photo is resampled onto a common north-up grid using its own sky coordinates (WCS); bad pixels are filled from their neighbours using the SPHEREx quality flags.
+4. **Track.** Sources are found in every photo, small pointing shifts are removed using the stars that stay still, and sources are linked into straight-line tracks over time.
+   Only tracks that really move are kept, each with a fitted speed, direction and error.
+5. **Measure.** Brightness comes from aperture photometry, and the wavelength of each measurement from the SPHEREx spectral map (WCS-WAVE), which gives the spectrum.
+
+## Tech
+
+- **Backend:** Python, FastAPI, Astropy, NumPy, SciPy, Pillow, SQLite (`backend/`).
+- **Frontend:** React 19, TypeScript and Vite, no UI framework (`web/`).
+  `npm run build` writes to `public/`.
+- **Hosting:** Vercel.
+  The page is served from the CDN; the API runs as a Python function, with the compact sky index and the nine example targets shipped in `seed/`.
+- **CI:** GitHub Actions runs the backend tests and type-checks and builds the frontend on every push.
+  Every push to `main` deploys to Vercel.
+
+## Run it locally
 
 ```bat
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python -m uvicorn backend.app:app --port 8000      & REM open http://localhost:8000
-.venv\Scripts\python -m pytest -q tests                          & REM offline tests
-.venv\Scripts\python -m backend.sky_index D3                     & REM build the image index from AWS (~30 min per detector, resumable)
-.venv\Scripts\python -m scripts.fetch_all preset 20              & REM optional: pre-download all presets
+.venv\Scripts\python -m uvicorn backend.app:app --port 8000
 ```
 
-Share a view with URL parameters: `/?ra=133.7598&dec=-7.2422&fov=0.1&detector=D3`
+Open <http://localhost:8000>.
+The app works out of the box with the shipped index and example targets.
 
-## How it works
+```bat
+.venv\Scripts\python -m pytest -q tests                   & REM backend tests (offline)
+cd web && npm ci && npm run dev                           & REM frontend dev server, proxies /api to port 8000
+cd web && npm run build                                   & REM rebuild public/
+.venv\Scripts\python -m backend.sky_index D3              & REM rebuild the full image index from AWS (resumable)
+.venv\Scripts\python -m scripts.make_seed                 & REM refresh seed/ for deployment
+```
 
-- Any RA/Dec works.
-  The first visit starts a background fetch: find the SPHEREx images covering the spot, then download up to 20 cutouts spread over the whole time range from NASA IRSA's cutout server.
-  The page polls and shows frames as they arrive.
-  Cutouts are cached in `data/raw/cutouts_v2/<ra>_<dec>_<fov>/`.
-- Finding images: IRSA's search services (TAP/SIA) were down during the hackathon, so `backend/sky_index.py` builds our own index from IRSA's public AWS copy of SPHEREx (`s3://nasa-irsa-spherex`, releases DR1 = 2025 and QR3 = 2026).
-  It reads only ~11 KB of each 65 MB image's header (pointing, rotation, time) into SQLite, and the search is a vectorised sky projection over all images (~0.5 s).
-  Re-run it to pick up new weekly data. Without an index the app falls back to IRSA's TAP search.
-- `backend/irsa.py` download and background jobs. `backend/cutouts.py` cache and PNG rendering.
-- `backend/app.py` FastAPI: `/api/frames`, `/api/frame.png` (sky or `mode=diff`), `/api/frame.fits`, `/api/movers`, `/api/resolve`, `/api/targets`. `backend/resolve.py` name lookup.
-- `backend/movers.py` the tracker: detect sources, link them into straight-line tracks over time, remove each frame's pointing shift using static stars, keep tracks that really move.
-  Tested on synthetic data (tests/) and on real SPHEREx data (see Status).
-- `scripts/fetch_all.py` pre-downloads the demo targets with the same code as the app, so the demo works when IRSA is down.
-- `web/` React + TypeScript frontend (Vite). `npm run build` writes to `public/`, which FastAPI serves locally and Vercel's CDN serves in production. Dev server: `cd web && npm ci && npm run dev` (proxies `/api` to port 8000) (no build step): search, presets, wavelength strip, player, changes-only mode, mover cards, brightness chart, frame details.
+Share or embed a view with URL parameters, for example `/?ra=331.0966&dec=-56.8007&fov=0.1&detector=D3&mode=diff`.
 
-## Status
+## Project layout
 
-Working: image search for any spot (full-sky D3 and D6 index), live fetching, north-up aligned movie, FOV choice (0.02 to 0.3 deg), URL sharing, moving-object tracker, deep stack view, CSV export.
+| Path | What it is |
+| --- | --- |
+| `backend/app.py` | API: `/api/frames`, `/api/frame.png`, `/api/frame.fits`, `/api/movers`, `/api/resolve`, `/api/targets` |
+| `backend/sky_index.py` | Our SPHEREx image index built from the AWS bucket |
+| `backend/irsa.py` | Live cutout downloads from NASA IRSA |
+| `backend/cutouts.py` | Alignment, cleaning and image rendering (photos, changes only, deep view) |
+| `backend/movers.py` | The moving-object tracker |
+| `backend/resolve.py` | Star name lookup with proper motion |
+| `web/` | React frontend source |
+| `public/` | Built frontend, served by Vercel's CDN |
+| `seed/` | Compact index and example cutouts shipped with the deployment |
+| `tests/` | Backend tests |
+| `docs/` | Demo video, screenshots and the Space Apps submission text |
 
-Tracker on real SPHEREx data (20 frames, about 1 year):
+## Limits
 
-| Target | Detector | Result | Known proper motion |
-| --- | --- | --- | --- |
-| Barnard's Star | D3 | found, 8.7"/yr, 20/20 frames | 10.4"/yr |
-| Epsilon Indi B | D3 | found, 4.4"/yr, 20/20 frames | 4.7"/yr |
-| RW Aurigae | D3 | no movers (correct) | 0.02"/yr |
-| R Draconis | D3 | no movers (correct) | 0.02"/yr |
-| Kapteyn's Star | D3 | found, 9.1"/yr toward 131 deg | 8.6"/yr toward 131 deg |
-| Luhman 16 | D3 | found, 3.1"/yr toward 271 deg | 2.8"/yr toward 277 deg |
-| Groombridge 1830 | D3 | found, 5.7"/yr toward 157 deg | 7.1"/yr toward 146 deg |
-| Wolf 359 (searched live, never cached before) | D3 | found, 5.3"/yr toward 244 deg | 4.7"/yr toward 235 deg |
-| WISE 0855 | D6 | visible in the movie, too faint for the detector per frame (S/N 5-8 at peak) | 8.1"/yr |
+- Very faint movers such as WISE 0855 are visible in the movie but too faint to track in single photos; tracking on stacked photos (shift-and-stack) is the next step.
+- Very crowded Milky Way fields (for example Proxima Centauri) confuse the tracker.
+- Brightness values mix wavelengths, so they are indicative rather than calibrated.
+- SPHEREx pixels are 6.15 arcseconds wide, so photos are smoothly upscaled for display; they show what the telescope saw, not more.
+- On Vercel's free plan, the first request after a quiet period takes up to about 20 seconds while the server starts.
 
-Not yet: stacking frames for faint movers like WISE 0855; the brightness curve mixes wavelengths (each SPHEREx frame sees a different part of the detector band) and bright stars saturate, so it is not yet a true light curve.
+## Credits
 
-## Notes
-
-- Preset positions are at epoch 2026.0 (proper motion applied).
-  Barnard's Star has moved 0.075 deg since J2000, so J2000 coordinates miss it in a 0.1 deg cutout.
-- One detector (D1-D6) per movie: each sees a different wavelength, so frames from different detectors are not comparable.
-- SPHEREx rotates between survey passes (about 180 deg), so every frame is resampled onto a north-up grid using its WCS; cutouts are fetched 1.5x larger so the rotated grid is always covered.
-- Pixels flagged bad (FLAGS bits 0-11) are filled from their neighbours for display only.
-  Bright star cores carry the same flags, so the tracker uses the unmasked image.
-- The tracker only searches the inner 80% of the view; cutout edges produced fake tracks.
-- A mover closer than ~2 pixels to a bright star blends with it and is missed.
-- Very crowded fields (for example Proxima Centauri, in the Milky Way plane) defeat the tracker: it keeps the 60 brightest sources per image and chance alignments outnumber the real track.
-- Raw data and the index are gitignored (`data/raw`, `data/index`).
-- Data: NASA/IPAC IRSA, SPHEREx. Acknowledge SPHEREx (JPL/Caltech, NASA) when using the data.
+- Images: NASA SPHEREx (JPL/Caltech), from the NASA/IPAC Infrared Science Archive (IRSA) and its open copy on AWS.
+- Star positions and motions: ESA Gaia via SIMBAD and the CDS Sesame name resolver.
+- Fonts: Newsreader and Geist (SIL Open Font License).
+- Built with help from AI coding tools (Claude Code); the demo voice-over uses neural text-to-speech.
