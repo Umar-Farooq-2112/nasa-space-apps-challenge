@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mover Spotter</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0b0e17; color: #e6e9f0; margin: 0; padding: 16px; }
+  h1 { font-size: 1.3rem; margin: 0 0 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  input, select, button { background: #1a2033; color: inherit; border: 1px solid #33405f; border-radius: 6px; padding: 6px 10px; font: inherit; }
+  button { cursor: pointer; } button:hover { background: #26304d; }
+  input[type=number] { width: 110px; }
+  #view { image-rendering: pixelated; background: #000; border: 1px solid #33405f; max-width: 100%; }
+  #slider { width: min(100%, 420px); }
+  #info { color: #9aa6c4; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<h1>Mover Spotter &mdash; SPHEREx sky patch player</h1>
+
+<div class="row" id="presets"></div>
+<div class="row">
+  RA <input id="ra" type="number" step="any">
+  Dec <input id="dec" type="number" step="any">
+  FOV
+  <select id="fov"><option value="0.05">0.05&deg; (sharp)</option><option value="0.1" selected>0.1&deg;</option><option value="0.2">0.2&deg; (wide)</option></select>
+  Detector
+  <select id="det"><option>all</option><option>D1</option><option>D2</option><option>D3</option><option>D4</option><option>D5</option><option>D6</option></select>
+  <button id="go">Load</button>
+</div>
+
+<canvas id="view" width="348" height="354"></canvas>
+<div class="row">
+  <button id="play">Play</button>
+  <input id="slider" type="range" min="0" max="0" value="0">
+</div>
+<div id="info">Pick a target or enter coordinates.</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $("view"), ctx = canvas.getContext("2d");
+let frames = [], imgs = [], idx = 0, timer = null;
+
+function show(i) {
+  if (!frames.length) return;
+  idx = (i + frames.length) % frames.length;           // loop
+  const im = imgs[idx];
+  canvas.width = im.naturalWidth; canvas.height = im.naturalHeight;
+  ctx.drawImage(im, 0, 0);
+  $("slider").value = idx;
+  const f = frames[idx];
+  $("info").textContent = `Frame ${idx + 1}/${frames.length}  |  ${f.date.replace("T", " ").slice(0, 19)} UTC  |  ${f.detector}`;
+}
+
+function setPlaying(on) {
+  clearInterval(timer); timer = null;
+  if (on) timer = setInterval(() => show(idx + 1), 400);
+  $("play").textContent = on ? "Pause" : "Play";
+}
+
+async function load() {
+  setPlaying(false);
+  const ra = $("ra").value, dec = $("dec").value, fov = $("fov").value, det = $("det").value;
+  history.replaceState(null, "", `?ra=${ra}&dec=${dec}&fov=${fov}&detector=${det}`);   // shareable URL
+  $("info").textContent = "Loading...";
+  const r = await fetch(`/api/frames?ra=${ra}&dec=${dec}&fov=${fov}&detector=${det}`);
+  if (!r.ok) { $("info").textContent = (await r.json()).detail || "Error"; frames = []; return; }
+  frames = (await r.json()).frames;
+  if (!frames.length) { $("info").textContent = "No frames for this detector."; return; }
+  imgs = await Promise.all(frames.map(f => new Promise(res => {
+    const im = new Image(); im.onload = () => res(im); im.src = f.png_url;
+  })));
+  $("slider").max = frames.length - 1;
+  show(0); setPlaying(true);
+}
+
+$("go").onclick = load;
+$("play").onclick = () => setPlaying(!timer);
+$("slider").oninput = e => { setPlaying(false); show(+e.target.value); };
+
+(async () => {
+  const targets = await (await fetch("/api/targets")).json();
+  targets.forEach(t => {
+    const b = document.createElement("button"); b.textContent = t.name;
+    b.onclick = () => { $("ra").value = t.ra; $("dec").value = t.dec; load(); };
+    $("presets").appendChild(b);
+  });
+  const p = new URLSearchParams(location.search);
+  if (p.has("ra") && p.has("dec")) {
+    $("ra").value = p.get("ra"); $("dec").value = p.get("dec");
+    if (p.has("fov")) $("fov").value = p.get("fov");
+    if (p.has("detector")) $("det").value = p.get("detector");
+    load();
+  }
+})();
+</script>
+</body>
+</html>
