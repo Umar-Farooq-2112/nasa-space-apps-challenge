@@ -15,10 +15,11 @@ const EMPTY: Sky = { frames: [], status: null, newest: null, error: null, movers
 
 /** Frames for a spot (polling while NASA downloads run), then the tracker's movers. Restarts when the spot changes. */
 export function useSky(spot: Spot | null): Sky {
-  const [sky, setSky] = useState<Sky>(EMPTY);
   const key = spot ? `${spot.ra}|${spot.dec}|${spot.fov}|${spot.det}` : "";
+  // results carry the spot they belong to, so a new spot never shows the previous one's data, not even for one render
+  const [sky, setSky] = useState<Sky & { key: string }>({ ...EMPTY, key: "" });
   useEffect(() => {
-    setSky(EMPTY);
+    setSky({ ...EMPTY, key });
     if (!spot) return;
     const ac = new AbortController();
     (async () => {
@@ -45,7 +46,7 @@ export function useSky(spot: Spot | null): Sky {
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return sky;
+  return sky.key === key ? sky : EMPTY;
 }
 
 const images = new Map<string, HTMLImageElement>();
