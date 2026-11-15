@@ -71,32 +71,38 @@ def _fit(t, x, y):
 
 def find_tracks(t, dets, tol=4.0, max_rate=300.0, min_frames=4):
     """t: days per frame. dets: per frame (x, y) arcsec arrays. Returns list of {frame_idx: det_idx}.
-    tol: match radius (arcsec); max_rate: fastest allowed speed (arcsec/day)."""
+    tol: match radius (arcsec); max_rate: fastest allowed speed (arcsec/day).
+    For each pair of detections in two frames we assume straight-line motion and count how many
+    other frames have a detection near the predicted spot (vectorised with numpy)."""
     n = len(dets)
+    D = max((len(d[0]) for d in dets), default=0)
+    if D == 0:
+        return []
+    X = np.full((n, D), np.inf)
+    Y = np.full((n, D), np.inf)
+    for f, (x, y) in enumerate(dets):
+        X[f, :len(x)], Y[f, :len(y)] = x, y
     hyps = []
     for a in range(n):
         for b in range(a + 1, n):
             dt = t[b] - t[a]
-            if dt < 1e-3:
+            xa, ya = dets[a]
+            xb, yb = dets[b]
+            if dt < 1e-3 or len(xa) == 0 or len(xb) == 0:
                 continue
-            for i in range(len(dets[a][0])):
-                for j in range(len(dets[b][0])):
-                    vx = (dets[b][0][j] - dets[a][0][i]) / dt
-                    vy = (dets[b][1][j] - dets[a][1][i]) / dt
-                    if np.hypot(vx, vy) > max_rate:
-                        continue
-                    members = {}
-                    for f in range(n):
-                        if len(dets[f][0]) == 0:
-                            continue
-                        px = dets[a][0][i] + vx * (t[f] - t[a])
-                        py = dets[a][1][i] + vy * (t[f] - t[a])
-                        d = np.hypot(dets[f][0] - px, dets[f][1] - py)
-                        k = int(np.argmin(d))
-                        if d[k] <= tol:
-                            members[f] = k
-                    if len(members) >= min_frames:
-                        hyps.append(members)
+            dtf = (t - t[a])[None, :]
+            for i in range(len(xa)):
+                vx, vy = (xb - xa[i]) / dt, (yb - ya[i]) / dt
+                ok = np.hypot(vx, vy) <= max_rate
+                if not ok.any():
+                    continue
+                px = xa[i] + vx[ok, None] * dtf                      # predicted x per frame, (J, n)
+                py = ya[i] + vy[ok, None] * dtf
+                d = np.hypot(X[None] - px[:, :, None], Y[None] - py[:, :, None])   # (J, n, D)
+                k, dmin = d.argmin(2), d.min(2)
+                hit = dmin <= tol
+                for q in np.nonzero(hit.sum(1) >= min_frames)[0]:
+                    hyps.append({int(f): int(k[q, f]) for f in np.nonzero(hit[q])[0]})
     hyps.sort(key=len, reverse=True)
     used, tracks = set(), []
     for m in hyps:

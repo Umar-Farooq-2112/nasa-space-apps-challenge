@@ -18,16 +18,16 @@
 </style>
 </head>
 <body>
-<h1>Mover Spotter &mdash; SPHEREx sky patch player</h1>
+<h1>Mover Spotter &mdash; sky patch player</h1>
 
 <div class="row" id="presets"></div>
 <div class="row">
   RA <input id="ra" type="number" step="any">
   Dec <input id="dec" type="number" step="any">
   FOV
-  <select id="fov"><option value="0.05">0.05&deg; (sharp)</option><option value="0.1" selected>0.1&deg;</option><option value="0.2">0.2&deg; (wide)</option></select>
-  Detector
-  <select id="det"><option>all</option><option>D1</option><option>D2</option><option>D3</option><option>D4</option><option>D5</option><option>D6</option></select>
+  <select id="fov"><option value="0.05">0.05&deg; (sharp)</option><option value="0.1" selected>0.1&deg;</option><option value="0.2">0.2&deg; (wide)</option></select> <small style="color:#9aa6c4">(FOV not active yet)</small>
+  Data
+  <select id="det"><option value="W2" selected>WISE W2 (2010-2021)</option><option value="all">all (mixed)</option><option>D1</option><option>D2</option><option>D3</option><option>D4</option><option>D5</option><option>D6</option></select>
   <button id="go">Load</button>
 </div>
 
@@ -38,6 +38,17 @@
 </div>
 <canvas id="curve" width="420" height="140" style="display:none;background:#10162a;border:1px solid #33405f;margin-top:8px;max-width:100%"></canvas>
 <div id="info">Pick a target or enter coordinates.</div>
+<div id="found" style="margin:6px 0"></div>
+<details open style="max-width:640px;color:#c5cce0;line-height:1.5;margin-top:10px">
+<summary style="cursor:pointer;color:#e6e9f0"><b>How to read this</b></summary>
+<ul>
+  <li><b>The picture</b> is a small patch of sky. Each frame is a different date (shown under the picture). It plays like a flipbook.</li>
+  <li><b>Stars stay in place</b> from frame to frame. Something that <i>drifts</i> is moving across the sky: a nearby star, brown dwarf, asteroid or comet.</li>
+  <li><b>Blue circle + trail</b> = Mover Spotter found something whose position changes steadily. The label gives its speed in arcseconds per year. A circle also has to appear in most frames, so one-off specks are ignored.</li>
+  <li><b>Click a circle</b> to turn it yellow and see its brightness over time (the graph). A flat line means a steady object; a wiggle can mean a variable star or noise.</li>
+  <li><b>Data:</b> WISE infrared images (the sky survey before SPHEREx), one frame per ~6-month epoch. SPHEREx data fits the same way once its archive (IRSA) is back online.</li>
+  <li><b>Test it:</b> click <b>WISE 0855</b>. It is a very cold brown dwarf that moves about 8 arcseconds per year, so the circle should drift left to right while the stars stay put.</li>
+</ul></details>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -82,7 +93,7 @@ function drawCurve() {
   const pts = movers[selected].points.filter(p => p.flux !== null);
   const v = pts.map(p => p.flux), lo = Math.min(...v), hi = Math.max(...v) || 1;
   g.fillStyle = "#9aa6c4"; g.font = "11px sans-serif";
-  g.fillText(`Mover #${selected + 1}: brightness over time (3x3 px sum, MJy/sr)`, 8, 14);
+  g.fillText(`Mover #${selected + 1}: brightness over time (3x3 px sum, arbitrary units)`, 8, 14);
   g.strokeStyle = "#ffd23f"; g.beginPath();
   pts.forEach((p, i) => {
     const x = 10 + i * (c.width - 20) / Math.max(pts.length - 1, 1);
@@ -101,14 +112,17 @@ canvas.onclick = e => {                                    // click a mover to s
 };
 
 async function loadMovers(ra, dec, det) {
-  movers = []; selected = -1; drawCurve();
-  if (det === "all") return;                                // mixed detectors: stars differ, skip
+  movers = []; selected = -1; drawCurve(); $("found").textContent = "Looking for movers...";
+  if (det === "all") { $("found").textContent = "Mover Spotter needs one data type at a time (not \"all\")."; return; }
   const r = await fetch(`/api/movers?ra=${ra}&dec=${dec}&detector=${det}`);
   if (!r.ok) return;
   const d = await r.json();
   movers = d.movers; SCALE = d.scale || 6;
-  if (d.note) $("info").textContent = d.note;
-  else if (!movers.length) $("info").textContent += "  |  no movers detected";
+  const fnd = $("found");
+  if (d.note) fnd.textContent = d.note;
+  else if (!movers.length) fnd.textContent = "Mover Spotter: no movers detected in this patch.";
+  else fnd.innerHTML = "Mover Spotter found " + movers.length + " mover(s): " + movers.map((m, k) =>
+    `<b>#${k + 1}</b> ${m.rate_arcsec_per_year.toFixed(1)}\"/yr, seen in ${m.n_detections}/${d.n_frames} frames`).join("; ") + ". Click a circle for its brightness curve.";
   show(idx);
 }
 

@@ -22,11 +22,18 @@ Share a view with URL parameters: `/?ra=133.7951&dec=-7.2451&fov=0.1&detector=D3
   remove each frame's pointing shift using static stars, keep tracks that really move. Tested on synthetic data.
 - `frontend/index.html` player with presets, play/pause, slider, dates, URL params, circles, trails, click a mover for its light curve.
 
+## Data sources
+- **WISE/NEOWISE time-resolved epochs (working, real data):** `scripts/fetch_unwise_epochs.py RA DEC TILE` downloads one small
+  cutout per epoch (~6 months apart, 2010-2021) with HTTP range requests from the public NERSC archive. Used by the app now.
+- **SPHEREx (IRSA):** scripts are ready, but IRSA's TAP search service was down while building, so no usable SPHEREx time series yet.
+  The app reads those cutouts too (`data/raw/cutouts/`) when they exist.
+- Tried and not usable: CDS hips2fits (service unavailable), unWISE per-release cutouts (cumulative stacks, not epochs).
+
 ## Status
-Working: player, API, Mover Spotter on synthetic data.
-Not yet: live fetching from IRSA inside the app (data must be in `data/raw/cutouts/` first, via `scripts/`),
-FOV selector (cutouts are fixed at 0.1 deg), tests on real movers (IRSA's TAP search was down while building;
-only 12 mixed-detector cutouts of WISE 0855 were downloaded).
+Working: player, API, Mover Spotter. Real test: WISE 0855 (18 epochs) -> 1 mover found at 8.1 arcsec/yr in 18/18 frames,
+matching its published proper motion (~8.1 arcsec/yr). Also tested on synthetic data (`tests/`).
+Not yet: other 4 demo targets (need their unWISE tile name + a fetch), FOV selector, live fetching inside the app.
+Check real data from the command line: `.venv\Scripts\python -m scripts.check_movers 133.7951 -7.2451 W2`
 
 ## Notes
 - Use ONE detector (D1-D6) per movie: each sees a different wavelength, so frames from different detectors are not comparable.
