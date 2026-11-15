@@ -1,5 +1,5 @@
 """List SPHEREx images covering a sky position (via IRSA TAP).
-Usage: find_images.py RA DEC
+Usage: find_images.py RA DEC [DETECTOR e.g. D3]
 IRSA's server often returns 502, so we submit an async job and poll with retries.
 Result is saved to data/raw/images_<ra>_<dec>.csv
 """
@@ -12,11 +12,13 @@ import io
 
 TAP = "https://irsa.ipac.caltech.edu/TAP"
 ra, dec = float(sys.argv[1]), float(sys.argv[2])
+det = sys.argv[3] if len(sys.argv) > 3 else None   # e.g. D3
+det_sql = f"AND p.energy_bandpassname = 'SPHEREx-{det}'" if det else ""
 
 QUERY = f"""
 SELECT TOP 200 a.uri AS uri, p.time_bounds_lower AS mjd, p.energy_bandpassname AS band, p.calibrationlevel AS level, a.producttype AS ptype
 FROM spherex.artifact a JOIN spherex.plane p ON a.planeid = p.planeid
-WHERE CONTAINS(POINT('ICRS', {ra}, {dec}), p.poly) = 1
+WHERE CONTAINS(POINT('ICRS', {ra}, {dec}), p.poly) = 1 {det_sql}
 ORDER BY p.time_bounds_lower
 """
 
