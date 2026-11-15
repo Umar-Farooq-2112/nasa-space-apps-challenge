@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mover Spotter</title>
+<link rel="icon" href="data:,">
 <style>
   body { font-family: system-ui, sans-serif; background: #0b0e17; color: #e6e9f0; margin: 0; padding: 16px; }
   h1 { font-size: 1.3rem; margin: 0 0 12px; }
@@ -35,12 +36,13 @@
   <button id="play">Play</button>
   <input id="slider" type="range" min="0" max="0" value="0">
 </div>
+<canvas id="curve" width="420" height="140" style="display:none;background:#10162a;border:1px solid #33405f;margin-top:8px;max-width:100%"></canvas>
 <div id="info">Pick a target or enter coordinates.</div>
 
 <script>
 const $ = id => document.getElementById(id);
 const canvas = $("view"), ctx = canvas.getContext("2d");
-let frames = [], imgs = [], idx = 0, timer = null;
+let frames = [], imgs = [], idx = 0, timer = null, movers = [], selected = -1, SCALE = 6;
 
 function show(i) {
   if (!frames.length) return;
@@ -48,9 +50,66 @@ function show(i) {
   const im = imgs[idx];
   canvas.width = im.naturalWidth; canvas.height = im.naturalHeight;
   ctx.drawImage(im, 0, 0);
+  drawMovers();
   $("slider").value = idx;
   const f = frames[idx];
   $("info").textContent = `Frame ${idx + 1}/${frames.length}  |  ${f.date.replace("T", " ").slice(0, 19)} UTC  |  ${f.detector}`;
+}
+
+// FITS y is flipped in the PNG: canvas_y = height - (py + 0.5) * SCALE
+function pos(p, h) { return [(p.px + 0.5) * SCALE, h - (p.py + 0.5) * SCALE]; }
+
+function drawMovers() {
+  const h = canvas.height;
+  movers.forEach((m, k) => {
+    const col = k === selected ? "#ffd23f" : "#4de1ff";
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+    ctx.beginPath();                                        // trail up to current frame
+    m.points.slice(0, idx + 1).forEach((p, i) => { const [x, y] = pos(p, h); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+    const [x, y] = pos(m.points[idx], h);
+    ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.stroke();  // circle on the mover
+    ctx.fillStyle = col; ctx.font = "12px sans-serif";
+    ctx.fillText(`#${k + 1} ${m.rate_arcsec_per_year.toFixed(1)}"/yr`, x + 16, y - 4);
+  });
+}
+
+function drawCurve() {
+  const c = $("curve"), g = c.getContext("2d");
+  g.clearRect(0, 0, c.width, c.height);
+  if (selected < 0) { c.style.display = "none"; return; }
+  c.style.display = "block";
+  const pts = movers[selected].points.filter(p => p.flux !== null);
+  const v = pts.map(p => p.flux), lo = Math.min(...v), hi = Math.max(...v) || 1;
+  g.fillStyle = "#9aa6c4"; g.font = "11px sans-serif";
+  g.fillText(`Mover #${selected + 1}: brightness over time (3x3 px sum, MJy/sr)`, 8, 14);
+  g.strokeStyle = "#ffd23f"; g.beginPath();
+  pts.forEach((p, i) => {
+    const x = 10 + i * (c.width - 20) / Math.max(pts.length - 1, 1);
+    const y = c.height - 12 - (p.flux - lo) / ((hi - lo) || 1) * (c.height - 40);
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  });
+  g.stroke();
+}
+
+canvas.onclick = e => {                                    // click a mover to see its light curve
+  const r = canvas.getBoundingClientRect(), sx = canvas.width / r.width;
+  const cx = (e.clientX - r.left) * sx, cy = (e.clientY - r.top) * sx;
+  let best = -1, bd = 30;
+  movers.forEach((m, k) => { const [x, y] = pos(m.points[idx], canvas.height); const d = Math.hypot(x - cx, y - cy); if (d < bd) { bd = d; best = k; } });
+  selected = best; drawCurve(); show(idx);
+};
+
+async function loadMovers(ra, dec, det) {
+  movers = []; selected = -1; drawCurve();
+  if (det === "all") return;                                // mixed detectors: stars differ, skip
+  const r = await fetch(`/api/movers?ra=${ra}&dec=${dec}&detector=${det}`);
+  if (!r.ok) return;
+  const d = await r.json();
+  movers = d.movers; SCALE = d.scale || 6;
+  if (d.note) $("info").textContent = d.note;
+  else if (!movers.length) $("info").textContent += "  |  no movers detected";
+  show(idx);
 }
 
 function setPlaying(on) {
@@ -73,6 +132,7 @@ async function load() {
   })));
   $("slider").max = frames.length - 1;
   show(0); setPlaying(true);
+  loadMovers(ra, dec, det);
 }
 
 $("go").onclick = load;

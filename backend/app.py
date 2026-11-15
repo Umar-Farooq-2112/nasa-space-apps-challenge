@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
-from . import cutouts
+from . import cutouts, movers
 from .targets import TARGETS
 
 app = FastAPI(title="Mover Spotter")
@@ -25,6 +25,19 @@ def frames(ra: float, dec: float, fov: float = 0.1, detector: str = "all"):
     for it in items:
         it["png_url"] = f"/api/frame.png?folder={it['folder']}&file={it['file']}"
     return {"ra": ra, "dec": dec, "fov": fov, "frames": items}
+
+
+@app.get("/api/movers")
+def find_movers(ra: float, dec: float, detector: str = "D3"):
+    """Detected movers. Use ONE detector: other detectors see other wavelengths, so stars vary."""
+    frames = cutouts.load_frames(ra, dec, detector)
+    if not frames:
+        raise HTTPException(404, "No cached data for this position/detector.")
+    if len(frames) < 5:
+        return {"movers": [], "note": f"Need at least 5 frames to spot movers, have {len(frames)}."}
+    need = max(5, round(0.4 * len(frames)))  # a real source shows up in most frames; blocks chance matches
+    return {"movers": movers.spot_movers(frames, (ra, dec), min_frames=need), "scale": cutouts.SCALE,
+            "frame_heights": [f.image.shape[0] for f in frames]}
 
 
 @app.get("/api/frame.png")

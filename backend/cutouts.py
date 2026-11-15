@@ -5,7 +5,10 @@ from pathlib import Path
 
 import numpy as np
 from astropy.io import fits
+from astropy.wcs import WCS
 from PIL import Image
+
+from .movers import Frame
 
 CACHE = Path(__file__).resolve().parent.parent / "data" / "raw" / "cutouts"
 SCALE = 6  # upscale tiny 58x59 images so they are visible
@@ -57,3 +60,14 @@ def render_png(folder: str, file: str) -> bytes:
     buf = io.BytesIO()
     pic.save(buf, "PNG")
     return buf.getvalue()
+
+
+def load_frames(ra: float, dec: float, detector: str = "all"):
+    """Frame objects (image + WCS) for the movers code, oldest first."""
+    items = list_frames(ra, dec, detector)
+    out = []
+    for it in items or []:
+        with fits.open(CACHE / it["folder"] / it["file"]) as h:
+            out.append(Frame(it["mjd"], it["date"], it["detector"],
+                             h["IMAGE"].data.astype(float), WCS(h["IMAGE"].header)))
+    return out
