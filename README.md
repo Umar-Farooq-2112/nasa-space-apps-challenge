@@ -6,6 +6,8 @@ A web tool that shows SPHEREx images of a sky patch as a short movie and automat
 
 ![Charon finding Epsilon Indi B in real SPHEREx data](docs/screenshot.png)
 
+Live app: https://nasa-space-apps-challenge-ten.vercel.app
+
 Demo video (30 s): [docs/charon_demo.mp4](docs/charon_demo.mp4)
 
 ## Features

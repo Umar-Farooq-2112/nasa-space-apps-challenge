@@ -6,6 +6,11 @@ Copy each section into the matching field of the Space Apps project form.
 
 Charon
 
+## Links
+
+- Live app: https://nasa-space-apps-challenge-ten.vercel.app
+- Code: https://github.com/Umar-Farooq-2112/nasa-space-apps-challenge
+
 ## High-level summary
 
 In 1978 astronomers found Charon, Pluto's largest moon, by noticing one tiny bump that moved from photo to photo.
