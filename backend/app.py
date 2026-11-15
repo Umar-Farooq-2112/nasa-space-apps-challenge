@@ -111,4 +111,6 @@ def resolve_name(name: str = Query(min_length=1, max_length=100)):
         raise HTTPException(503, str(e))
 
 
-app.mount("/", StaticFiles(directory=Path(__file__).resolve().parent.parent / "public", html=True))   # on Vercel, public/ is served by the CDN instead
+# Local runs serve the page from here; on Vercel the CDN serves public/ and leaves it out of the function bundle,
+# so the folder may be missing: check_dir=False keeps the API from crashing at import.
+app.mount("/", StaticFiles(directory=Path(__file__).resolve().parent.parent / "public", html=True, check_dir=False))
