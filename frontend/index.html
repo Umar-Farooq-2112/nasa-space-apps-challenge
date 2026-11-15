@@ -3,156 +3,779 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mover Spotter</title>
-<link rel="icon" href="data:,">
+<title>Charon: find what moves in NASA's SPHEREx sky</title>
+<meta name="description" content="Pick any spot in the sky and watch a year of NASA SPHEREx infrared images. Moving stars, brown dwarfs and asteroids are found and circled for you.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%239B968F'/%3E%3Cellipse cx='15' cy='5' rx='11' ry='6' fill='%237B3F27'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-  body { font-family: system-ui, sans-serif; background: #0b0e17; color: #e6e9f0; margin: 0; padding: 16px; }
-  h1 { font-size: 1.3rem; margin: 0 0 12px; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
-  input, select, button { background: #1a2033; color: inherit; border: 1px solid #33405f; border-radius: 6px; padding: 6px 10px; font: inherit; }
-  button { cursor: pointer; } button:hover { background: #26304d; }
-  input[type=number] { width: 110px; }
-  #view { image-rendering: pixelated; background: #000; border: 1px solid #33405f; max-width: 100%; }
-  #slider { width: min(100%, 420px); }
-  #info { color: #9aa6c4; min-height: 1.4em; }
+  :root {
+    --bg: #060913; --card: rgba(16,22,40,.72); --card-solid: #101628; --ink: #E8ECF8; --muted: #8D97B5; --line: rgba(148,163,209,.16);
+    --soft: rgba(148,163,209,.08); --primary: #5EEAD4; --a1: #2DD4BF; --a2: #60A5FA; --a3: #A78BFA;
+    --grad: linear-gradient(120deg, var(--a1), var(--a2) 50%, var(--a3));
+    --mover: #FF4F8B; --mover-soft: rgba(255,79,139,.12); --ring: #60A5FA; --sky: #02040A; --violet-soft: rgba(96,165,250,.1);
+    --radius: 12px; --shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 20px 40px -24px rgba(0,0,0,.8);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: "Instrument Sans", ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--ink);
+         font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  #space { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+  body::before { content: ""; position: fixed; inset: -20%; z-index: -2; pointer-events: none;
+    background: radial-gradient(40% 35% at 15% 10%, rgba(45,212,191,.16), transparent 70%),
+                radial-gradient(45% 40% at 85% 15%, rgba(167,139,250,.18), transparent 70%),
+                radial-gradient(50% 40% at 50% 100%, rgba(96,165,250,.12), transparent 70%);
+    animation: aurora 24s ease-in-out infinite alternate; }
+  @keyframes aurora { to { transform: translate3d(3%, -2%, 0) rotate(4deg) scale(1.05); } }
+  .num { font-variant-numeric: tabular-nums; }
+  h1, h2, h3, p { margin: 0; }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--a2); outline-offset: 2px; }
+  ::selection { background: rgba(96,165,250,.35); }
+  svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* header */
+  header { position: sticky; top: 14px; z-index: 10; padding: 0 22px; margin-top: 14px; }
+  .bar { max-width: 1436px; margin: 0 auto; padding: 7px 8px 7px 12px; display: flex; align-items: center; gap: 14px; border-radius: 999px;
+         background: rgba(12,17,34,.62); border: 1px solid rgba(148,163,209,.2); backdrop-filter: blur(18px) saturate(150%);
+         box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 18px 40px -20px rgba(0,0,0,.9), 0 0 0 1px rgba(0,0,0,.2); }
+  .bar .input, .bar .btn { border-radius: 999px; }
+  .brand .charon { filter: drop-shadow(0 0 10px rgba(228,225,220,.25)); }
+  .brand .charon .orbit { transform-origin: 16px 16px; animation: orbit 30s linear infinite; }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: max-content; }
+  .brand svg { flex: none; }
+  @keyframes orbit { to { transform: rotate(360deg); } }
+  .brand b { font-family: "Space Grotesk", "Instrument Sans", sans-serif; font-size: 21px; font-weight: 700; letter-spacing: -.02em;
+             background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .brand span { color: var(--muted); font-size: 13px; }
+  form.search { flex: 1; max-width: 560px; margin-left: auto; display: flex; gap: 8px; position: relative; }
+  form.search > svg.i { position: absolute; left: 12px; top: 10px; color: var(--muted); pointer-events: none; }
+  form.search .input { padding-left: 36px; }
+
+  /* controls */
+  .input { height: 38px; width: 100%; padding: 0 12px; background: rgba(8,12,24,.7); border: 1px solid var(--line);
+           border-radius: 10px; transition: border-color .2s, box-shadow .2s, background .2s; }
+  .input::placeholder { color: #66708E; }
+  .input:hover { border-color: rgba(148,163,209,.3); }
+  .input:focus { outline: none; border-color: var(--a2); box-shadow: 0 0 0 4px rgba(96,165,250,.18); background: rgba(8,12,24,.9); }
+  .btn { position: relative; overflow: hidden; height: 38px; padding: 0 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+         border-radius: 10px; border: 1px solid transparent; font-weight: 600; cursor: pointer; white-space: nowrap; isolation: isolate;
+         transition: transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .25s, background .2s, border-color .2s, color .2s; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: translateY(0) scale(.97); }
+  .btn-primary { background: var(--grad); color: #04121A; box-shadow: 0 8px 24px -10px rgba(96,165,250,.8); }
+  .btn-primary:hover { box-shadow: 0 12px 30px -8px rgba(96,165,250,.95), 0 0 0 1px rgba(255,255,255,.15) inset; }
+  .btn-primary::after { content: ""; position: absolute; inset: 0; z-index: -1; transform: translateX(-120%);
+                        background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.45) 50%, transparent 70%); transition: transform .6s; }
+  .btn-primary:hover::after { transform: translateX(120%); }
+  .btn-outline { background: rgba(148,163,209,.06); border-color: var(--line); color: var(--ink); }
+  .btn-outline:hover { background: rgba(148,163,209,.12); border-color: rgba(148,163,209,.32); box-shadow: 0 8px 20px -12px rgba(0,0,0,.9); }
+  .btn-icon { width: 38px; padding: 0; }
+  .btn[disabled] { opacity: .5; cursor: default; }
+  .ripple { position: absolute; border-radius: 50%; transform: scale(0); background: currentColor; opacity: .28; pointer-events: none;
+            animation: ripple .55s ease-out forwards; z-index: -1; }
+  @keyframes ripple { to { transform: scale(4); opacity: 0; } }
+  #play { width: 46px; height: 46px; border-radius: 50%; }
+  #play.on { animation: pulse 2s ease-out infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(94,234,212,.55); } 100% { box-shadow: 0 0 0 16px rgba(94,234,212,0); } }
+  .seg { display: inline-flex; padding: 4px; background: rgba(8,12,24,.7); border: 1px solid var(--line); border-radius: 12px; gap: 2px; }
+  .seg button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; border: 0; background: transparent; padding: 6px 12px;
+                border-radius: 8px; cursor: pointer; font-weight: 500; color: var(--muted); transition: background .2s, color .2s, box-shadow .2s, transform .15s; }
+  .seg button:hover { color: var(--ink); background: rgba(148,163,209,.08); }
+  .seg button:active { transform: scale(.96); }
+  .seg button[aria-pressed="true"] { background: linear-gradient(180deg, rgba(96,165,250,.28), rgba(167,139,250,.2)); color: #fff;
+                                     box-shadow: 0 0 0 1px rgba(96,165,250,.45) inset, 0 6px 16px -8px rgba(96,165,250,.8); }
+  .seg svg.i { width: 14px; height: 14px; }
+
+  /* layout */
+  main { max-width: 1480px; margin: 0 auto; padding: 22px; display: grid; gap: 20px;
+         grid-template-columns: 310px minmax(0, 1fr) 330px; align-items: start; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow);
+          backdrop-filter: blur(16px) saturate(130%); animation: enter .7s cubic-bezier(.2,.8,.2,1) both; }
+  main > :nth-child(2) { animation-delay: .08s; } main > :nth-child(3) { animation-delay: .16s; }
+  @keyframes enter { from { opacity: 0; transform: translateY(14px); } }
+  .panel { padding: 18px; display: grid; gap: 20px; }
+  .panel h2 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #C3CAE0; margin-bottom: 10px; }
+  .panel h2 svg.i { color: var(--a1); width: 15px; height: 15px; }
+  .field { display: grid; gap: 6px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  label.small { font-size: 12px; color: var(--muted); }
+
+  .targets { display: grid; gap: 6px; }
+  .target { text-align: left; border: 1px solid transparent; background: rgba(148,163,209,.05); border-radius: 12px; padding: 10px 12px;
+            cursor: pointer; transition: border-color .2s, background .2s, transform .18s, box-shadow .2s; color: var(--ink);
+            display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: start; }
+  .target:hover { background: rgba(148,163,209,.1); border-color: var(--line); transform: translateX(3px); }
+  .target[aria-pressed="true"] { border-color: rgba(94,234,212,.55); background: linear-gradient(120deg, rgba(45,212,191,.14), rgba(167,139,250,.1));
+                                 box-shadow: 0 0 0 1px rgba(94,234,212,.2), 0 10px 24px -14px rgba(45,212,191,.7); }
+  .target b { font-weight: 600; }
+  .target span { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; }
+  .kind { font-style: normal; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .kind.bd { background: rgba(167,139,250,.16); color: #C4B5FD; } .kind.st { background: rgba(251,191,36,.14); color: #FCD34D; }
+  .kind.var { background: rgba(45,212,191,.14); color: #5EEAD4; }
+
+  /* wavelength strip */
+  .strip { display: grid; grid-template-columns: repeat(6, 1fr); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); gap: 1px; background: var(--line); }
+  .strip button { border: 0; padding: 9px 0 8px; cursor: pointer; color: #fff; display: grid; gap: 1px; justify-items: center;
+                  background: var(--c); opacity: .38; transition: opacity .2s, filter .2s; position: relative; }
+  .strip button:hover { opacity: .75; }
+  .strip button[aria-pressed="true"] { opacity: 1; filter: saturate(1.2) brightness(1.1); box-shadow: 0 0 22px var(--c) inset; }
+  .strip button[aria-pressed="true"]::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 18px; height: 3px;
+                  margin-left: -9px; background: #fff; border-radius: 3px 3px 0 0; }
+  .strip b { font-weight: 700; font-size: 13px; } .strip span { font-size: 10.5px; opacity: .95; }
+  .strip-scale { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  .hint { font-size: 12.5px; color: var(--muted); }
+
+  /* viewer */
+  .viewer { padding: 18px; display: grid; gap: 14px; }
+  .viewer-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .viewer-head h1 { font-family: "Space Grotesk", "Instrument Sans", sans-serif; font-size: 28px; font-weight: 700; letter-spacing: -.025em; }
+  .viewer-head .coords { color: var(--muted); font-size: 13px; }
+  .live { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: #B9C2DC; background: rgba(45,212,191,.07);
+          border: 1px solid rgba(45,212,191,.18); border-radius: 12px; padding: 9px 12px; }
+  .live[hidden] { display: none; }
+  .live i { width: 8px; height: 8px; border-radius: 50%; background: #34D399; flex: none; animation: live 1.8s ease-out infinite; }
+  @keyframes live { 0% { box-shadow: 0 0 0 0 rgba(52,211,153,.6); } 100% { box-shadow: 0 0 0 9px rgba(52,211,153,0); } }
+  .stats { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 8px; padding-top: 8px;
+           border-top: 1px solid var(--line); font-size: 12.5px; }
+  .stats dt { color: var(--muted); } .stats dd { text-align: left; }
+  .match { grid-column: 1 / -1; display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; padding: 9px 11px; border-radius: 10px;
+           background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.25); color: #A7F3D0; font-size: 12.5px; }
+  .match.off { background: rgba(251,191,36,.1); border-color: rgba(251,191,36,.25); color: #FDE68A; }
+  .stage { position: relative; aspect-ratio: 1; width: min(100%, 660px); margin: 0 auto; background: var(--sky); border-radius: 16px; overflow: hidden;
+           box-shadow: 0 0 0 1px rgba(148,163,209,.18), 0 30px 80px -30px rgba(96,165,250,.45), 0 0 120px -40px rgba(167,139,250,.5); }
+  .stage canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+  .overlay { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px;
+             color: #DDE3F0; text-align: center; padding: 28px; background: radial-gradient(circle at 50% 40%, rgba(16,22,48,.82), rgba(2,4,10,.92));
+             transition: opacity .35s; }
+  .overlay[hidden] { display: grid; opacity: 0; pointer-events: none; }
+  .overlay p { max-width: 38ch; }
+  .progress { width: 240px; height: 5px; border-radius: 5px; background: rgba(255,255,255,.1); overflow: hidden; }
+  .progress i { display: block; height: 100%; width: 0; background: var(--grad); transition: width .4s; box-shadow: 0 0 12px rgba(96,165,250,.8); }
+  .spinner { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,.12); border-top-color: var(--a1); border-right-color: var(--a3);
+             animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .compass { position: absolute; top: 12px; left: 12px; color: #C9D2E3; pointer-events: none; }
+  .scalebar { position: absolute; bottom: 12px; right: 14px; color: #C9D2E3; font-size: 11px; text-align: center; pointer-events: none; }
+  .scalebar i { display: block; height: 2px; background: #C9D2E3; margin-bottom: 3px; }
+  .stamp { position: absolute; top: 12px; right: 12px; color: #fff; font-size: 13px; font-weight: 600; pointer-events: none;
+           padding: 4px 10px; border-radius: 999px; background: rgba(6,9,19,.55); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(6px); }
+  .stamp:empty { display: none; }
+
+  .controls { display: grid; gap: 12px; width: min(100%, 660px); margin: 0 auto; }
+  .timeline { display: grid; gap: 6px; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 6px; cursor: pointer;
+    background: linear-gradient(90deg, var(--a1), var(--a2) var(--p, 0%), rgba(148,163,209,.18) var(--p, 0%)); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff;
+    box-shadow: 0 0 0 4px rgba(96,165,250,.35), 0 4px 10px rgba(0,0,0,.5); transition: transform .15s; }
+  input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+  input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px rgba(96,165,250,.35); }
+  .dates { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .controls .row { flex-wrap: wrap; justify-content: space-between; }
+
+  /* right panel */
+  .movers { display: grid; gap: 8px; }
+  .mover { text-align: left; border: 1px solid var(--line); background: rgba(148,163,209,.05); border-radius: 14px; padding: 12px 13px; color: var(--ink);
+           cursor: pointer; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center;
+           animation: rise .45s cubic-bezier(.2,.8,.2,1) both; transition: border-color .2s, background .2s, transform .18s; }
+  .mover:hover { background: rgba(148,163,209,.09); transform: translateY(-1px); }
+  .mover[aria-pressed="true"] { border-color: rgba(255,79,139,.6); background: var(--mover-soft); box-shadow: 0 10px 30px -16px rgba(255,79,139,.8); }
+  .mover .dot { grid-row: span 2; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--mover); box-shadow: 0 0 10px rgba(255,79,139,.8); }
+  .mover b { font-weight: 600; }
+  .mover span { color: var(--muted); font-size: 12.5px; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  .empty { color: var(--muted); font-size: 13px; padding: 12px 13px; border: 1px dashed rgba(148,163,209,.25); border-radius: 12px; }
+  svg.chart { width: 100%; height: 150px; display: block; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+  a { color: var(--a2); }
+  footer { max-width: 1480px; margin: 0 auto; padding: 6px 22px 32px; color: var(--muted); font-size: 12.5px; }
+  footer b { color: #C3CAE0; }
+
+  .toast { position: fixed; bottom: 22px; left: 50%; transform: translate(-50%, 14px); opacity: 0; background: var(--card-solid); border: 1px solid var(--line);
+           color: #fff; padding: 10px 16px; border-radius: 12px; font-weight: 500; transition: opacity .25s, transform .25s; z-index: 20;
+           box-shadow: 0 20px 40px -12px rgba(0,0,0,.8); }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  kbd { font: inherit; font-size: 11.5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: rgba(148,163,209,.08); }
+
+  /* intro */
+  .intro { max-width: 470px; text-align: left; display: grid; gap: 16px; animation: rise .7s cubic-bezier(.2,.8,.2,1) both; }
+  .intro h3 { font-family: "Space Grotesk", "Instrument Sans", sans-serif; font-size: 27px; font-weight: 700; letter-spacing: -.025em; color: #fff; line-height: 1.15; }
+  .intro p { max-width: none; color: #B9C2DC; }
+  .intro ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; counter-reset: s; }
+  .intro li { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; color: #DDE3F0; counter-increment: s; }
+  .intro li::before { content: counter(s); width: 28px; height: 28px; border-radius: 50%; display: grid; place-content: center;
+                      background: var(--grad); color: #04121A; font-weight: 700; font-size: 13px; }
+  .intro li b { color: #fff; }
+  .intro .btn { justify-self: start; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted); }
+  .legend[hidden] { display: none; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #FF4F8B; flex: none; }
+  .legend i.trail { border: 0; border-radius: 2px; height: 2px; background: #FF4F8B; }
+  .verdict { grid-column: 1 / -1; font-size: 13.5px; font-weight: 600; margin-top: 6px;
+             background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .why { font-size: 12.5px; color: var(--muted); border-left: 2px solid rgba(96,165,250,.4); padding-left: 10px; margin-top: 2px; }
+
+  @media (max-width: 1180px) { main { grid-template-columns: 290px minmax(0, 1fr); } aside.right { grid-column: 1 / -1; } }
+  @media (max-width: 760px) {
+    main { grid-template-columns: minmax(0, 1fr); padding: 12px; } header { padding: 0 12px; }
+    .bar { flex-wrap: wrap; border-radius: 24px; padding: 10px; } form.search { max-width: none; flex-basis: 100%; order: 3; }
+    #share { margin-left: auto; } .controls .seg { flex-wrap: wrap; }
+    .viewer { order: -1; }
+    .brand span { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
-<h1>Mover Spotter &mdash; SPHEREx sky patch player</h1>
+<canvas id="space" aria-hidden="true"></canvas>
+<header>
+  <div class="bar">
+    <div class="brand">
+      <svg class="charon" width="38" height="38" viewBox="0 0 32 32" aria-hidden="true"><defs><radialGradient id="chg" cx=".36" cy=".34" r=".78"><stop offset="0" stop-color="#E4E1DC"/><stop offset=".55" stop-color="#9B968F"/><stop offset="1" stop-color="#34322F"/></radialGradient><clipPath id="chc"><circle cx="16" cy="16" r="13"/></clipPath></defs><circle cx="16" cy="16" r="15" fill="none" stroke="rgba(94,234,212,.35)" stroke-width=".8" stroke-dasharray="1.5 2.2" class="orbit"/><circle cx="16" cy="16" r="13" fill="url(#chg)"/><g clip-path="url(#chc)"><ellipse cx="14.5" cy="4" rx="10.5" ry="6.2" fill="#7B3F27" opacity=".9"/><ellipse cx="14" cy="5.5" rx="7" ry="3.2" fill="#5A2C1C" opacity=".6"/><path d="M2 16.5c6 2.2 14 2.6 28-1.5" stroke="#55514C" stroke-width="1.3" fill="none" opacity=".7"/><path d="M3 19c7 1.6 15 1.4 26-2.2" stroke="#C9C5BF" stroke-width=".5" fill="none" opacity=".5"/><circle cx="21" cy="22" r="1.6" fill="#6E6A65" opacity=".7"/><circle cx="11" cy="24" r="1.1" fill="#6E6A65" opacity=".6"/><circle cx="24.5" cy="12.5" r=".9" fill="#6E6A65" opacity=".6"/><circle cx="16" cy="16" r="13" fill="url(#chg)" opacity="0"/><path d="M16 3a13 13 0 0 1 0 26a13 13 0 0 0 0-26z" fill="#000" opacity=".28" transform="translate(5 0)"/></g></svg>
+      <div><b>Charon</b> <span>find what moves in NASA's SPHEREx sky</span></div>
+    </div>
+    <form class="search" id="search" role="search">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input class="input" id="q" placeholder="Search a star by name, or type RA Dec in degrees" aria-label="Star name or coordinates" autocomplete="off">
+      <button class="btn btn-primary" type="submit"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Search</button>
+    </form>
+    <button class="btn btn-outline" id="share" title="Copy a link to this view">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+      Copy link
+    </button>
+  </div>
+</header>
 
-<div class="row" id="presets"></div>
-<div class="row">
-  RA <input id="ra" type="number" step="any">
-  Dec <input id="dec" type="number" step="any">
-  FOV
-  <select id="fov"><option value="0.05">0.05&deg; (sharp)</option><option value="0.1" selected>0.1&deg;</option><option value="0.2">0.2&deg; (wide)</option></select>
-  Detector
-  <select id="det"><option>all</option><option>D1</option><option>D2</option><option>D3</option><option>D4</option><option>D5</option><option>D6</option></select>
-  <button id="go">Load</button>
-</div>
+<main>
+  <aside class="card panel" aria-label="Choose what to look at">
+    <section>
+      <h2><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>Start with a famous moving star</h2>
+      <div class="targets" id="targets"></div>
+    </section>
+    <section class="field">
+      <h2><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg>Or go to any spot in the sky</h2>
+      <div class="row">
+        <div class="field" style="flex:1"><label class="small" for="ra">RA (deg)</label><input class="input num" id="ra" type="number" step="any" min="0" max="360"></div>
+        <div class="field" style="flex:1"><label class="small" for="dec">Dec (deg)</label><input class="input num" id="dec" type="number" step="any" min="-90" max="90"></div>
+      </div>
+      <p class="hint">RA and Dec are the sky's longitude and latitude. You can also type a star name in the search box at the top.</p>
+      <div class="field"><button class="btn btn-primary" id="go"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg>Show this spot</button><button class="btn btn-outline" id="random" title="Nobody may have looked closely at this patch yet"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>Explore a random spot</button></div>
+    </section>
+    <section>
+      <h2><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg>How much sky to show</h2>
+      <div class="seg" id="fov" role="group" aria-label="Field of view">
+        <button data-v="0.05" title="3 arcminutes across">Close up</button><button data-v="0.1" title="6 arcminutes across, a tenth of the full Moon's width">Medium</button><button data-v="0.2" title="12 arcminutes across">Wide</button>
+      </div>
+      <p class="hint" style="margin-top:6px">Wide catches faster movers but takes longer to load. Medium is a tenth of the full Moon's width.</p>
+    </section>
+    <section>
+      <h2><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/><path d="M2 17c2-3 4-3 6 0s4 3 6 0 4-3 6 0" opacity=".5"/></svg>Infrared color</h2>
+      <div class="strip" id="strip" role="group" aria-label="SPHEREx detector"></div>
+      <div class="strip-scale"><span>Warmer stars stand out</span><span>Cold objects glow</span></div>
+      <p class="hint" id="det-hint" style="margin-top:6px"></p>
+    </section>
+  </aside>
 
-<canvas id="view" width="348" height="354"></canvas>
-<div class="row">
-  <button id="play">Play</button>
-  <input id="slider" type="range" min="0" max="0" value="0">
-</div>
-<canvas id="curve" width="420" height="140" style="display:none;background:#10162a;border:1px solid #33405f;margin-top:8px;max-width:100%"></canvas>
-<div id="info">Pick a target or enter coordinates.</div>
+  <section class="card viewer" aria-label="Sky viewer">
+    <div class="viewer-head">
+      <h1 id="title">See the sky change over a year</h1>
+      <span class="coords num" id="coords"></span>
+    </div>
+    <p class="live" id="live" hidden><i></i><span id="live-text"></span></p>
+    <div class="legend" id="legend" hidden>
+      <span><i></i>Circle: an object our tracker found moving</span>
+      <span><i class="trail"></i>Line: the path it took</span>
+      <span>Everything else stays still</span>
+    </div>
+    <div class="stage">
+      <canvas id="view" width="720" height="720" aria-label="SPHEREx image of the selected sky area"></canvas>
+      <div class="compass" aria-hidden="true">
+        <svg width="46" height="46" viewBox="0 0 46 46" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M30 34V12M30 34H8"/><path d="M27 15l3-3 3 3M11 31l-3 3 3 3"/><text x="26.5" y="9" fill="currentColor" stroke="none" font-size="10" font-weight="600">N</text><text x="0" y="38" fill="currentColor" stroke="none" font-size="10" font-weight="600">E</text></svg>
+      </div>
+      <div class="stamp num" id="stamp"></div>
+      <div class="scalebar num" id="scalebar" hidden><i></i>1 arcmin</div>
+      <div class="overlay" id="overlay"></div>
+    </div>
+    <div class="controls">
+      <div class="timeline">
+        <input type="range" id="slider" min="0" max="0" value="0" aria-label="Frame">
+        <div class="dates num"><span id="d0"></span><span id="dnow"></span><span id="d1"></span></div>
+      </div>
+      <div class="row">
+        <div class="row" style="gap:6px">
+          <button class="btn btn-outline btn-icon" id="prev" title="Previous frame (left arrow)" aria-label="Previous frame"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+          <button class="btn btn-primary btn-icon" id="play" title="Play or pause (space)" aria-label="Play"><svg id="play-ico" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg></button>
+          <button class="btn btn-outline btn-icon" id="next" title="Next frame (right arrow)" aria-label="Next frame"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+          <div class="seg" id="speed" role="group" aria-label="Playback speed"><button data-v="700">Slow</button><button data-v="350">Normal</button><button data-v="150">Fast</button></div>
+        </div>
+        <div class="seg" id="mode" role="group" aria-label="Image mode">
+          <button data-v="sky" title="The photos as NASA took them"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>Photos</button>
+          <button data-v="diff" title="Each photo minus the average sky (key D): still stars vanish, anything that changed stays"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>Changes only</button>
+          <button data-v="deep" title="All photos added together: about 3.5 times less noise, so faint objects appear"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg>Deep view</button>
+        </div>
+      </div>
+      <p class="hint" id="mode-hint"></p>
+      <p class="hint" id="status" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <aside class="card panel right" aria-label="Results">
+    <section>
+      <div class="row" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>What moved</h2><button class="btn btn-outline" id="export" style="height:28px;font-size:12.5px" hidden title="Every measured position, for scientists and citizen scientists"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>CSV</button></div>
+      <div class="movers" id="movers"><p class="empty">Pick a star and we'll check every photo for things that move.</p></div>
+    </section>
+    <section id="curve-box" hidden>
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 id="curve-title" style="margin:0">Brightness</h2>
+        <div class="seg" id="chart-mode" role="group" aria-label="Chart"><button data-v="time">Time</button><button data-v="wave">Spectrum</button></div>
+      </div>
+      <svg class="chart" id="curve" viewBox="0 0 300 150" role="img" aria-label="Brightness of the selected object over time"></svg>
+      <p class="hint" id="curve-hint"></p>
+    </section>
+    <section>
+      <h2><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>This photo</h2>
+      <dl id="meta"><dt>Date</dt><dd>-</dd></dl>
+    </section>
+    <section class="hint">
+      Keys: <kbd>Space</kbd> play, <kbd>←</kbd> <kbd>→</kbd> step, <kbd>D</kbd> changes only.</section>
+    <section class="hint">Named after Charon, Pluto's largest moon. In 1978 James Christy found it by noticing a bump on Pluto's image that moved from photo to photo. This app does the same with NASA's SPHEREx telescope.
+    </section>
+  </aside>
+</main>
+<footer>
+  <p><b>How we know a find is real.</b> Each photo is aligned to the same north-up grid using its own sky coordinates (WCS).
+  Every star is located in every photo, small pointing shifts are removed using the stars that stay still, and only objects that move in a straight line across most photos are kept.
+  Each find gets a speed, a direction, an error bar and a confidence, and is compared with the Gaia catalog via SIMBAD.
+  Tested on eight known nearby stars and brown dwarfs: all six fast movers found, no false movers on the two variable stars.</p>
+  <p style="margin-top:8px"><b>Data and credits.</b> Images: NASA SPHEREx (JPL/Caltech), from the NASA/IPAC Infrared Science Archive (IRSA) and its open copy on AWS.
+  Star positions and motions: ESA Gaia via SIMBAD and the CDS Sesame name resolver.
+  Software: Python, FastAPI, Astropy, NumPy, SciPy, Pillow. Font: Instrument Sans (Google Fonts, OFL).
+  Built for the NASA Space Apps Challenge 2026 with help from AI coding tools (Claude Code).</p>
+</footer>
+<div class="toast" id="toast" role="status"></div>
 
 <script>
 const $ = id => document.getElementById(id);
-const canvas = $("view"), ctx = canvas.getContext("2d");
-let frames = [], imgs = [], idx = 0, timer = null, movers = [], selected = -1, SCALE = 6;
+const canvas = $("view"), ctx = canvas.getContext("2d"), W = canvas.width;
+const DETECTORS = [   // SPHEREx detector bands (micrometres)
+  { id: "D1", band: "0.75-1.09", mid: "0.9", c: "#E3A43A" }, { id: "D2", band: "1.10-1.62", mid: "1.4", c: "#DD7A3C" },
+  { id: "D3", band: "1.63-2.41", mid: "2.0", c: "#C9476A" }, { id: "D4", band: "2.42-3.82", mid: "3.1", c: "#9A3FB0" },
+  { id: "D5", band: "3.83-4.41", mid: "4.1", c: "#6C4FD0" }, { id: "D6", band: "4.42-5.00", mid: "4.7", c: "#3D5BD6" },
+];
+const PIX = 6.15;   // arcsec per SPHEREx pixel
+let state = { ra: null, dec: null, fov: "0.1", det: "D3", mode: "sky", speed: 350, name: "", catalog: null, chart: "time" };
+let frames = [], imgs = [], idx = 0, timer = null, movers = [], selected = -1, SCALE = 6, loadId = 0, drawIn = 1, targets = [];
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2200); }
+function setSeg(id, v) { for (const b of $(id).children) b.setAttribute("aria-pressed", String(b.dataset.v === String(v))); }
+function overlay(html, show = true) { const o = $("overlay"); if (html !== null) o.innerHTML = html; o.hidden = !show; }
+const fmtDate = s => new Date(s + "Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+/* ---------- drawing ---------- */
 function show(i) {
   if (!frames.length) return;
-  idx = (i + frames.length) % frames.length;           // loop
+  idx = (i + frames.length) % frames.length;
   const im = imgs[idx];
-  canvas.width = im.naturalWidth; canvas.height = im.naturalHeight;
-  ctx.drawImage(im, 0, 0);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(im, 0, 0, W, W);
   drawMovers();
-  $("slider").value = idx;
+  $("slider").value = idx; $("slider").style.setProperty("--p", `${frames.length > 1 ? idx / (frames.length - 1) * 100 : 0}%`);
   const f = frames[idx];
-  $("info").textContent = `Frame ${idx + 1}/${frames.length}  |  ${f.date.replace("T", " ").slice(0, 19)} UTC  |  ${f.detector}`;
+  $("stamp").textContent = fmtDate(f.date);
+  $("dnow").textContent = `Image ${idx + 1} of ${frames.length}`;
+  renderMeta(f);
 }
-
-// FITS y is flipped in the PNG: canvas_y = height - (py + 0.5) * SCALE
-function pos(p, h) { return [(p.px + 0.5) * SCALE, h - (p.py + 0.5) * SCALE]; }
-
+function toCanvas(p) {   // mover point (display-grid pixels, y up) -> canvas
+  const n = imgs[0].naturalWidth / SCALE, k = W / n;
+  return [(p.px + 0.5) * k, W - (p.py + 0.5) * k];
+}
 function drawMovers() {
-  const h = canvas.height;
   movers.forEach((m, k) => {
-    const col = k === selected ? "#ffd23f" : "#4de1ff";
-    ctx.strokeStyle = col; ctx.lineWidth = 1.5;
-    ctx.beginPath();                                        // trail up to current frame
-    m.points.slice(0, idx + 1).forEach((p, i) => { const [x, y] = pos(p, h); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    const sel = k === selected, col = sel ? "#FFD23F" : "#FF4F8B";
+    ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.globalAlpha = .9;
+    ctx.beginPath();   // trail of where it has been so far
+    m.points.slice(0, idx + 1).forEach((p, i) => { const [x, y] = toCanvas(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
     ctx.stroke();
-    const [x, y] = pos(m.points[idx], h);
-    ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.stroke();  // circle on the mover
-    ctx.fillStyle = col; ctx.font = "12px sans-serif";
-    ctx.fillText(`#${k + 1} ${m.rate_arcsec_per_year.toFixed(1)}"/yr`, x + 16, y - 4);
+    const [x, y] = toCanvas(m.points[idx]);
+    ctx.globalAlpha = 1; ctx.lineWidth = sel ? 3 : 2.25;
+    ctx.beginPath(); ctx.arc(x, y, 22, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * drawIn); ctx.stroke();
+    const label = `${k + 1}`;
+    ctx.font = "600 13px Instrument Sans, sans-serif";
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x + 20, y - 20, 10, 0, 7); ctx.fill();
+    ctx.fillStyle = "#14213D"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(label, x + 20, y - 19.5);
+    ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
   });
 }
+function animateDrawIn() {   // the one orchestrated moment: circles draw themselves around found movers
+  if (reduceMotion) { drawIn = 1; show(idx); return; }
+  const t0 = performance.now();
+  const step = now => { drawIn = Math.min(1, (now - t0) / 700); show(idx); if (drawIn < 1) requestAnimationFrame(step); };
+  drawIn = 0; requestAnimationFrame(step);
+}
+function setScalebar() {
+  if (!imgs.length) { $("scalebar").hidden = true; return; }
+  const n = imgs[0].naturalWidth / SCALE;                  // display grid size in SPHEREx pixels
+  $("scalebar").style.width = `${60 / PIX / n * 100}%`;     // 1 arcmin as a share of the stage width
+  $("scalebar").hidden = false;
+}
 
+/* ---------- side panels ---------- */
+const compass = pa => ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][Math.round(pa / 45) % 8];
+function catalogMatch(m) {   // compare with the catalog proper motion when the mover is our named target
+  const c = state.catalog;
+  if (!c) return "";
+  const p = m.points[Math.floor(m.points.length / 2)];
+  const off = Math.hypot((p.ra - state.ra) * Math.cos(state.dec * Math.PI / 180), p.dec - state.dec) * 3600;
+  if (off > 40) return "";
+  const rate = Math.hypot(c.pmra, c.pmdec) / 1000, pa = (Math.atan2(c.pmra, c.pmdec) * 180 / Math.PI + 360) % 360;
+  if (rate < 0.2) return "";
+  const dRate = Math.abs(m.rate_arcsec_per_year - rate) / rate * 100;
+  const dPa = Math.abs(((m.pa_deg - pa + 540) % 360) - 180);
+  const good = dRate < 25 && dPa < 20;
+  return `<p class="match ${good ? "" : "off"}">${good ? "Matches" : "Compare with"} the catalog (SIMBAD/Gaia): ${rate.toFixed(2)}″ per year toward ${pa.toFixed(0)}°.
+    Speed within ${dRate.toFixed(0)}%, direction within ${dPa.toFixed(0)}°.</p>`;
+}
+function plain(m) {   // the speed in everyday terms: a coin (2.4 cm) seen from far away
+  const km = 0.024 / (m.rate_arcsec_per_year / 206265) / 1000;
+  return `Like a coin seen from ${km < 10 ? km.toFixed(1) : km.toFixed(0)} km away sliding its own width in a year. Tiny, but SPHEREx can measure it, and only nearby objects move this fast.`;
+}
+function renderMovers(note) {
+  const box = $("movers");
+  if (!movers.length) { box.innerHTML = `<p class="empty">${esc(note || "Nothing here moved enough to measure in a year. That is normal: almost every star is too far away to visibly shift.")}</p>`; return; }
+  box.innerHTML = movers.map((m, k) => `
+    <button class="mover" aria-pressed="${k === selected}" data-k="${k}" style="animation-delay:${k * 60}ms">
+      <i class="dot"></i><b class="num">Object ${k + 1} is moving ${compass(m.pa_deg)}</b>
+      <span>Found in ${m.n_detections} of ${m.points.length} photos</span>
+      <p class="verdict num">${m.rate_arcsec_per_year.toFixed(2)} ± ${m.rate_err_arcsec_per_year.toFixed(2)} arcseconds per year</p>
+      <p class="why" style="grid-column:1/-1">${plain(m)}</p>
+      <dl class="stats num">
+        <dt>Direction</dt><dd>${m.pa_deg.toFixed(0)}° east of north</dd>
+        <dt>Moved</dt><dd>${m.displacement_arcsec.toFixed(1)}″ in ${Math.round(m.span_days)} days</dd>
+        <dt>Track fit error</dt><dd>${m.fit_rms_arcsec.toFixed(2)}″</dd>
+        <dt>Confidence</dt><dd>${m.significance >= 10 ? "Very high" : m.significance >= 5 ? "High" : "Low"} (${m.significance.toFixed(0)}σ)</dd>
+      </dl>
+      ${catalogMatch(m)}
+    </button>`).join("");
+  for (const b of box.children) b.onclick = () => select(+b.dataset.k);
+}
+function select(k) {
+  selected = selected === k ? -1 : k;
+  renderMovers(); drawCurve(); show(idx);
+}
 function drawCurve() {
-  const c = $("curve"), g = c.getContext("2d");
-  g.clearRect(0, 0, c.width, c.height);
-  if (selected < 0) { c.style.display = "none"; return; }
-  c.style.display = "block";
-  const pts = movers[selected].points.filter(p => p.flux !== null);
-  const v = pts.map(p => p.flux), lo = Math.min(...v), hi = Math.max(...v) || 1;
-  g.fillStyle = "#9aa6c4"; g.font = "11px sans-serif";
-  g.fillText(`Mover #${selected + 1}: brightness over time (3x3 px sum, MJy/sr)`, 8, 14);
-  g.strokeStyle = "#ffd23f"; g.beginPath();
-  pts.forEach((p, i) => {
-    const x = 10 + i * (c.width - 20) / Math.max(pts.length - 1, 1);
-    const y = c.height - 12 - (p.flux - lo) / ((hi - lo) || 1) * (c.height - 40);
-    i ? g.lineTo(x, y) : g.moveTo(x, y);
-  });
-  g.stroke();
+  const box = $("curve-box"), svg = $("curve");
+  if (selected < 0) { box.hidden = true; return; }
+  box.hidden = false;
+  setSeg("chart-mode", state.chart);
+  const wave = state.chart === "wave";
+  $("curve-title").textContent = wave ? `Spectrum of object ${selected + 1}` : `Brightness of object ${selected + 1}`;
+  $("curve-hint").textContent = wave
+    ? "SPHEREx sees a different wavelength at each spot on its detector, so a year of images builds up a spectrum. Dips mark molecules such as water and methane."
+    : "Filled dots: detected. Open dots: measured where the track predicts. Sky light subtracted.";
+  const pts = movers[selected].points.filter(p => p.flux !== null && (!wave || p.wavelength_um))
+    .map(p => ({ x: wave ? p.wavelength_um : frames[p.frame].mjd, v: p.flux, d: p.detected, f: p.frame }));
+  if (!pts.length) { svg.innerHTML = ""; return; }
+  const x0 = Math.min(...pts.map(p => p.x)), x1 = Math.max(...pts.map(p => p.x));
+  const v0 = Math.min(0, ...pts.map(p => p.v)), v1 = Math.max(...pts.map(p => p.v));
+  const X = x => 34 + (x - x0) / ((x1 - x0) || 1) * 256, Y = v => 128 - (v - v0) / ((v1 - v0) || 1) * 110;
+  const curPt = pts.find(p => p.f === idx), cur = curPt ? X(curPt.x) : -10;
+  const lab = wave ? [x0.toFixed(2) + " µm", x1.toFixed(2) + " µm"] : [fmtDate(frames[0].date), fmtDate(frames[frames.length - 1].date)];
+  const trend = wave ? (() => {   // running mean along wavelength, to show the shape of the spectrum
+    const s = [...pts].sort((a, b) => a.x - b.x);
+    return "M" + s.map((p, i) => { const w = s.slice(Math.max(0, i - 1), i + 2); return `${X(p.x).toFixed(1)},${Y(w.reduce((a, q) => a + q.v, 0) / w.length).toFixed(1)}`; }).join("L");
+  })() : "";
+  svg.innerHTML = `
+    <line x1="34" y1="134" x2="290" y2="134" stroke="rgba(148,163,209,.25)"/><line x1="34" y1="10" x2="34" y2="134" stroke="rgba(148,163,209,.25)"/>
+    <line x1="${cur}" y1="10" x2="${cur}" y2="134" stroke="#60A5FA" stroke-dasharray="3 3"/>
+    ${trend ? `<path d="${trend}" fill="none" stroke="#FF4F8B" stroke-opacity=".55" stroke-width="2"/>` : ""}
+    ${pts.map(p => `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="3.5" fill="${p.d ? "#FF4F8B" : "#0B1020"}" fill-opacity=".9" stroke="#FF4F8B"/>`).join("")}
+    <text x="34" y="148" font-size="10" fill="#5B6478">${lab[0]}</text>
+    <text x="290" y="148" font-size="10" fill="#5B6478" text-anchor="end">${lab[1]}</text>
+    <text x="30" y="16" font-size="10" fill="#5B6478" text-anchor="end">bright</text><text x="30" y="132" font-size="10" fill="#5B6478" text-anchor="end">faint</text>`;
+}
+function renderMeta(f) {
+  const d = DETECTORS.find(x => x.id === f.detector);
+  $("meta").innerHTML = `
+    <dt>Taken</dt><dd class="num">${esc(f.date.replace("T", " ").slice(0, 16))} UTC</dd>
+    <dt>Detector</dt><dd>${esc(f.detector)}, ${d ? d.band : ""} µm</dd>
+    <dt>SPHEREx image</dt><dd>${esc(f.file.split("_").slice(2, 6).join(" "))}</dd>
+    <dt>Raw data</dt><dd><a href="${f.png_url.replace("frame.png", "frame.fits").replace(/&v=.*/, "")}" download>Download FITS</a></dd>`;
+  if (selected >= 0) drawCurve();
 }
 
-canvas.onclick = e => {                                    // click a mover to see its light curve
-  const r = canvas.getBoundingClientRect(), sx = canvas.width / r.width;
-  const cx = (e.clientX - r.left) * sx, cy = (e.clientY - r.top) * sx;
-  let best = -1, bd = 30;
-  movers.forEach((m, k) => { const [x, y] = pos(m.points[idx], canvas.height); const d = Math.hypot(x - cx, y - cy); if (d < bd) { bd = d; best = k; } });
-  selected = best; drawCurve(); show(idx);
-};
-
-async function loadMovers(ra, dec, det) {
-  movers = []; selected = -1; drawCurve();
-  if (det === "all") return;                                // mixed detectors: stars differ, skip
-  const r = await fetch(`/api/movers?ra=${ra}&dec=${dec}&detector=${det}`);
-  if (!r.ok) return;
-  const d = await r.json();
-  movers = d.movers; SCALE = d.scale || 6;
-  if (d.note) $("info").textContent = d.note;
-  else if (!movers.length) $("info").textContent += "  |  no movers detected";
-  show(idx);
-}
-
+/* ---------- playback ---------- */
 function setPlaying(on) {
   clearInterval(timer); timer = null;
-  if (on) timer = setInterval(() => show(idx + 1), 400);
-  $("play").textContent = on ? "Pause" : "Play";
+  if (on && frames.length > 1) timer = setInterval(() => show(idx + 1), state.speed);
+  $("play-ico").innerHTML = timer ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>';
+  $("play").setAttribute("aria-label", timer ? "Pause" : "Play"); $("play").classList.toggle("on", !!timer);
+}
+
+/* ---------- loading ---------- */
+const imgCache = new Map();
+function getImg(url) {
+  if (!imgCache.has(url)) imgCache.set(url, new Promise(res => {
+    const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = url;
+  }));
+  return imgCache.get(url);
+}
+const frameUrl = (f, n) => state.mode === "sky" ? f.png_url : `${f.png_url}&mode=${state.mode}&n=${n}`;
+const MODE_HINT = {
+  sky: "The real photos, one per date. Watch for a dot that shifts while the other stars stay put.",
+  diff: "Each photo minus the average of all of them. Still stars disappear; anything that moved or changed brightness shows up as a light or dark spot.",
+  deep: "All photos added together into one image with about 3.5 times less noise, so faint objects appear. A moving object shows as a short streak.",
+};
+const mjdDate = m => fmtDate(new Date((m - 40587) * 864e5).toISOString().slice(0, 19));
+function intro() {
+  overlay(`<div class="intro">
+    <h3>Some dots in the night sky move. Find them.</h3>
+    <p>NASA's SPHEREx space telescope photographs the whole sky in infrared every six months. Charon lines up its photos of one spot and plays them like a flip-book.</p>
+    <ol>
+      <li><span><b>Pick a star</b> on the left, or search any name or position.</span></li>
+      <li><span><b>Watch a year of real photos</b> of that patch of sky, oldest to newest.</span></li>
+      <li><span><b>See what moves.</b> We circle anything that shifts and check it against star catalogs. Nearby stars and brown dwarfs give themselves away like this, and so might an unknown planet.</span></li>
+    </ol>
+    <button class="btn btn-primary" id="intro-go">Show me Barnard's Star, the fastest star in the sky</button>
+  </div>`);
+  $("intro-go").onclick = () => pickTarget(targets.find(t => t.id === "barnards_star"));
+}
+const query = () => `ra=${state.ra}&dec=${state.dec}&fov=${state.fov}&detector=${state.det}`;
+
+function syncUrl() {
+  const p = new URLSearchParams({ ra: state.ra, dec: state.dec, fov: state.fov, detector: state.det });
+  if (state.mode !== "sky") p.set("mode", state.mode);
+  if (state.name) p.set("name", state.name);
+  history.replaceState(null, "", `?${p}`);
 }
 
 async function load() {
+  const id = ++loadId;
   setPlaying(false);
-  const ra = $("ra").value, dec = $("dec").value, fov = $("fov").value, det = $("det").value;
-  history.replaceState(null, "", `?ra=${ra}&dec=${dec}&fov=${fov}&detector=${det}`);   // shareable URL
-  $("info").textContent = "Loading...";
-  const r = await fetch(`/api/frames?ra=${ra}&dec=${dec}&fov=${fov}&detector=${det}`);
-  if (!r.ok) { $("info").textContent = (await r.json()).detail || "Error"; frames = []; return; }
-  frames = (await r.json()).frames;
-  if (!frames.length) { $("info").textContent = "No frames for this detector."; return; }
-  imgs = await Promise.all(frames.map(f => new Promise(res => {
-    const im = new Image(); im.onload = () => res(im); im.src = f.png_url;
-  })));
-  $("slider").max = frames.length - 1;
-  show(0); setPlaying(true);
-  loadMovers(ra, dec, det);
+  frames = []; imgs = []; movers = []; selected = -1; drawCurve(); renderMovers("Getting the photos first..."); $("legend").hidden = $("export").hidden = true;
+  ctx.fillStyle = "#05070D"; ctx.fillRect(0, 0, W, W); $("stamp").textContent = ""; $("scalebar").hidden = true;
+  $("live").hidden = true; $("slider").max = 0; $("d0").textContent = $("d1").textContent = $("dnow").textContent = "";
+  if (state.ra === null || state.dec === null || isNaN(state.ra) || isNaN(state.dec)) { overlay("<p>Enter RA and Dec in degrees.</p>"); return; }
+  $("title").textContent = state.name || "Custom position";
+  $("coords").textContent = `RA ${(+state.ra).toFixed(4)}°, Dec ${(+state.dec).toFixed(4)}°`;
+  syncUrl();
+  overlay('<div class="spinner"></div><p>Finding every SPHEREx photo of this spot...</p>');
+  while (true) {
+    let d;
+    try {
+      const r = await fetch(`/api/frames?${query()}`);
+      if (!r.ok) throw new Error(r.status === 422 ? "RA must be 0 to 360 and Dec -90 to 90." : "The server had a problem. Try again.");
+      d = await r.json();
+    } catch (e) {
+      if (id === loadId) overlay(`<p>${esc(e instanceof TypeError ? "Cannot reach the server. Check that it is running." : e.message)}</p>`);
+      return;
+    }
+    const n = d.frames.length;
+    const loaded = await Promise.all(d.frames.map(f => getImg(frameUrl(f, n))));
+    if (id !== loadId) return;
+    const ok = d.frames.map((f, i) => loaded[i] ? i : -1).filter(i => i >= 0);
+    const first = !frames.length && ok.length;
+    frames = ok.map(i => d.frames[i]); imgs = ok.map(i => loaded[i]);
+    $("slider").max = Math.max(frames.length - 1, 0);
+    const s = d.status, busy = s.state === "searching" || s.state === "downloading";
+    if (s.available) {
+      const newest = d.archive_newest_mjd ? ` NASA's newest release goes up to ${mjdDate(d.archive_newest_mjd)}; SPHEREx comes back to each spot about every six months, so this is the latest photo there is.` : "";
+      $("live-text").textContent = `Live NASA data: SPHEREx took ${s.available} photos of this spot between ${mjdDate(s.first_mjd)} and ${mjdDate(s.last_mjd)}. Showing ${s.total} spread over that time.${newest}`;
+      $("live").hidden = false;
+    }
+    if (frames.length) {
+      $("d0").textContent = fmtDate(frames[0].date); $("d1").textContent = fmtDate(frames[frames.length - 1].date);
+      setScalebar();
+      if (first) { idx = 0; setPlaying(true); }
+      show(idx);
+    }
+    if (busy) {
+      const pct = s.total ? Math.round(100 * n / s.total) : 5;
+      const msg = s.state === "searching" ? "Finding every SPHEREx photo of this spot..." : `Getting photos from NASA: ${n} of ${s.total}`;
+      const why = "First visit to this spot only. NASA stores each SPHEREx photo as a 65 MB file covering a big patch of sky; we cut out just your small square from each one, then keep it so next time is instant.";
+      if (frames.length) { overlay(null, false); $("status").textContent = `${msg}. The movie grows as they arrive.`; }
+      else overlay(`<div class="spinner"></div><p>${msg}</p><div class="progress"><i style="width:${pct}%"></i></div><p class="hint" style="color:#AEB8CC">${why}</p>`);
+    } else {
+      $("status").textContent = "";
+      if (s.state === "error") { overlay(`<p>${esc(s.error)}</p>`, !frames.length); if (frames.length) $("status").textContent = s.error; }
+      else if (!frames.length) overlay(`<p>SPHEREx has no ${state.det} images of this spot yet. Try another wavelength or position.</p>`);
+      else overlay(null, false);
+      break;
+    }
+    await new Promise(res => setTimeout(res, 2500));
+    if (id !== loadId) return;
+  }
+  if (frames.length) loadMovers(id);
 }
 
-$("go").onclick = load;
-$("play").onclick = () => setPlaying(!timer);
-$("slider").oninput = e => { setPlaying(false); show(+e.target.value); };
+async function loadMovers(id) {
+  renderMovers(`Checking ${frames.length} photos for anything that moves. About 10 seconds the first time.`);
+  $("movers").firstElementChild.insertAdjacentHTML("afterbegin", '<span class="spinner" style="display:inline-block;width:12px;height:12px;border-color:rgba(255,255,255,.12);border-top-color:#5EEAD4;vertical-align:-2px;margin-right:6px"></span>');
+  const r = await fetch(`/api/movers?${query()}`);
+  if (!r.ok || id !== loadId) return;
+  const d = await r.json();
+  if (id !== loadId) return;
+  movers = d.movers; SCALE = d.scale || 6;
+  renderMovers(d.note);
+  $("legend").hidden = !movers.length; $("export").hidden = !movers.length;
+  if (movers.length) animateDrawIn(); else show(idx);
+}
 
+async function reloadImages() {   // switching Sky / Changes only keeps the same frames
+  if (!frames.length) return;
+  const id = loadId, n = frames.length;
+  overlay('<div class="spinner"></div><p>Preparing images...</p>');
+  const loaded = await Promise.all(frames.map(f => getImg(frameUrl(f, n))));
+  if (id !== loadId) return;
+  imgs = loaded.map((im, i) => im || imgs[i]); overlay(null, false); show(idx);
+}
+
+/* ---------- inputs ---------- */
+function setDet(det) {
+  state.det = det; setSeg("strip", det);
+  const t = targets.find(t => t.name === state.name);
+  $("det-hint").textContent = t && t.detector !== det ? `${t.name} shows up best in ${t.detector}.` :
+    "SPHEREx has six detectors, each seeing a different slice of infrared light. Cold brown dwarfs (failed stars) glow at the right end.";
+}
+function pickTarget(t) {
+  state = { ...state, ra: t.ra, dec: t.dec, name: t.name, catalog: { pmra: t.pmra, pmdec: t.pmdec } };
+  $("ra").value = t.ra; $("dec").value = t.dec;
+  setDet(t.detector);
+  for (const b of $("targets").children) b.setAttribute("aria-pressed", String(b.dataset.id === t.id));
+  load();
+}
+$("strip").innerHTML = DETECTORS.map(d => `<button data-v="${d.id}" style="--c:${d.c}" title="${d.id}: ${d.band} micrometres"><b>${d.id}</b><span>${d.mid} µm</span></button>`).join("");
+for (const b of $("strip").children) b.onclick = () => { setDet(b.dataset.v); if (state.ra !== null) load(); };
+for (const b of $("fov").children) b.onclick = () => { state.fov = b.dataset.v; setSeg("fov", state.fov); if (state.ra !== null) load(); };
+for (const b of $("speed").children) b.onclick = () => { state.speed = +b.dataset.v; setSeg("speed", state.speed); if (timer) setPlaying(true); };
+for (const b of $("mode").children) b.onclick = () => { if (state.mode === b.dataset.v) return; state.mode = b.dataset.v; setSeg("mode", state.mode); $("mode-hint").textContent = MODE_HINT[state.mode]; syncUrl(); reloadImages(); };
+$("random").onclick = () => {   // uniform on the sphere, away from the crowded Milky Way plane, where the tracker works best
+  let ra, dec, b;
+  do {
+    ra = Math.random() * 360; dec = Math.asin(2 * Math.random() - 1) * 180 / Math.PI;
+    const r = ra * Math.PI / 180, d = dec * Math.PI / 180;   // galactic latitude from the J2000 north galactic pole
+    b = Math.asin(Math.sin(d) * Math.sin(0.4734773) + Math.cos(d) * Math.cos(0.4734773) * Math.cos(r - 3.3660329)) * 180 / Math.PI;
+  } while (Math.abs(b) < 20);
+  state = { ...state, ra: +ra.toFixed(4), dec: +dec.toFixed(4), name: "Random spot", catalog: null };
+  $("ra").value = state.ra; $("dec").value = state.dec;
+  for (const b of $("targets").children) b.setAttribute("aria-pressed", "false");
+  load();
+};
+$("export").onclick = () => {
+  const rows = [["object", "frame", "date_utc", "ra_deg", "dec_deg", "detected", "flux", "wavelength_um", "rate_arcsec_per_year", "pa_deg"]];
+  movers.forEach((m, k) => m.points.forEach((p, i) => rows.push([k + 1, i + 1, frames[i] ? frames[i].date : "", p.ra, p.dec, p.detected,
+    p.flux ?? "", p.wavelength_um ?? "", m.rate_arcsec_per_year, m.pa_deg])));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([rows.map(r => r.join(",")).join("\n")], { type: "text/csv" }));
+  a.download = `charon_${state.ra}_${state.dec}_${state.det}.csv`; a.click();
+  toast("Results downloaded.");
+};
+$("go").onclick = () => {
+  state.ra = parseFloat($("ra").value); state.dec = parseFloat($("dec").value); state.name = ""; state.catalog = null;
+  for (const b of $("targets").children) b.setAttribute("aria-pressed", "false");
+  load();
+};
+for (const b of $("chart-mode").children) b.onclick = () => { state.chart = b.dataset.v; drawCurve(); };
+$("play").onclick = () => setPlaying(!timer);
+$("prev").onclick = () => { setPlaying(false); show(idx - 1); };
+$("next").onclick = () => { setPlaying(false); show(idx + 1); };
+$("slider").oninput = e => { setPlaying(false); show(+e.target.value); };
+$("share").onclick = async () => {
+  try { await navigator.clipboard.writeText(location.href); toast("Link copied. Anyone with it sees this view."); }
+  catch { toast("Copy this page's address to share the view."); }
+};
+canvas.onclick = e => {   // click a mover to see its brightness
+  if (!movers.length) return;
+  const r = canvas.getBoundingClientRect(), k = W / r.width;
+  const cx = (e.clientX - r.left) * k, cy = (e.clientY - r.top) * k;
+  let best = -1, bd = 40;
+  movers.forEach((m, j) => { const [x, y] = toCanvas(m.points[idx]); const d = Math.hypot(x - cx, y - cy); if (d < bd) { bd = d; best = j; } });
+  if (best >= 0) select(best);
+};
+$("search").onsubmit = async e => {
+  e.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) return;
+  const nums = q.replace(/,/g, " ").split(/\s+/).map(Number);
+  if (nums.length === 2 && nums.every(x => !isNaN(x))) {
+    state = { ...state, ra: nums[0], dec: nums[1], name: "", catalog: null };
+    $("ra").value = nums[0]; $("dec").value = nums[1]; load(); return;
+  }
+  toast(`Looking up ${q}...`);
+  const r = await fetch(`/api/resolve?name=${encodeURIComponent(q)}`);
+  const d = await r.json();
+  if (!r.ok) { toast(d.detail || "Name lookup failed."); return; }
+  state = { ...state, ra: d.ra, dec: d.dec, name: q, catalog: { pmra: d.pmra, pmdec: d.pmdec } };
+  $("ra").value = d.ra; $("dec").value = d.dec;
+  for (const b of $("targets").children) b.setAttribute("aria-pressed", "false");
+  toast(d.pm_mas_yr > 100 ? `${q} moves ${(d.pm_mas_yr / 1000).toFixed(1)} arcsec per year. Position set for 2026.` : `Found ${q}.`);
+  load();
+};
+document.addEventListener("keydown", e => {
+  if (e.target.closest("input, select, textarea")) return;
+  if (e.code === "Space") { e.preventDefault(); setPlaying(!timer); }
+  else if (e.key === "ArrowLeft") { setPlaying(false); show(idx - 1); }
+  else if (e.key === "ArrowRight") { setPlaying(false); show(idx + 1); }
+  else if (e.key === "d" || e.key === "D") $("mode").children[state.mode === "sky" ? 1 : 0].click();
+});
+
+/* ---------- ambience: twinkling stars, button ripples ---------- */
+(() => {
+  const c = $("space"), g = c.getContext("2d"); let st = [];
+  const size = () => { c.width = innerWidth * devicePixelRatio; c.height = innerHeight * devicePixelRatio;
+    st = Array.from({ length: Math.round(innerWidth * innerHeight / 5200) }, () => ({ x: Math.random() * c.width, y: Math.random() * c.height,
+      r: (Math.random() ** 3 * 1.3 + .3) * devicePixelRatio, p: Math.random() * 6.3, s: .4 + Math.random() * 1.4, h: Math.random() < .15 })); };
+  const draw = t => { g.clearRect(0, 0, c.width, c.height);
+    for (const s of st) { g.globalAlpha = .25 + .55 * (.5 + .5 * Math.sin(t / 1000 * s.s + s.p)); g.fillStyle = s.h ? "#A5C8FF" : "#fff";
+      g.beginPath(); g.arc(s.x, s.y, s.r, 0, 6.3); g.fill(); }
+    if (!reduceMotion) requestAnimationFrame(draw); };
+  size(); addEventListener("resize", size); requestAnimationFrame(draw);
+})();
+document.addEventListener("pointerdown", e => {
+  const b = e.target.closest(".btn"); if (!b || reduceMotion) return;
+  const r = b.getBoundingClientRect(), d = Math.max(r.width, r.height), s = document.createElement("span");
+  s.className = "ripple"; s.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - r.left - d / 2}px;top:${e.clientY - r.top - d / 2}px`;
+  b.appendChild(s); setTimeout(() => s.remove(), 600);
+});
+
+/* ---------- start ---------- */
+const KIND = {
+  wise0855: ["Brown dwarf", "bd"], eps_indi_b: ["Brown dwarf", "bd"], luhman16: ["Brown dwarf", "bd"],
+  barnards_star: ["Fast star", "st"], kapteyn: ["Fast star", "st"], groombridge: ["Fast star", "st"], wolf359: ["Fast star", "st"],
+  rw_aur: ["Variable", "var"], r_dra: ["Variable", "var"],
+};
+const DESCRIBE = {
+  wise0855: "Coldest known brown dwarf, 7.4 light years away", barnards_star: "The fastest-moving star in our sky",
+  eps_indi_b: "A pair of brown dwarfs near a bright star", rw_aur: "A young star that flickers in brightness",
+  r_dra: "A giant star that slowly brightens and fades",
+  kapteyn: "One of the oldest stars near the Sun, racing past us", groombridge: "A fast star crossing the sky in Ursa Major",
+  wolf359: "A small red dwarf 7.9 light years away", luhman16: "The closest pair of brown dwarfs, 6.5 light years away",
+};
 (async () => {
-  const targets = await (await fetch("/api/targets")).json();
-  targets.forEach(t => {
-    const b = document.createElement("button"); b.textContent = t.name;
-    b.onclick = () => { $("ra").value = t.ra; $("dec").value = t.dec; load(); };
-    $("presets").appendChild(b);
-  });
+  setSeg("fov", state.fov); setSeg("speed", state.speed); setSeg("mode", state.mode); setDet(state.det);
+  $("mode-hint").textContent = MODE_HINT[state.mode];
+  targets = await (await fetch("/api/targets")).json();
+  $("targets").innerHTML = targets.map(t => `<button class="target" data-id="${t.id}" aria-pressed="false"><b>${esc(t.name)}</b><i class="kind ${KIND[t.id][1]}">${KIND[t.id][0]}</i><span>${DESCRIBE[t.id] || ""}</span></button>`).join("");
+  for (const b of $("targets").children) b.onclick = () => pickTarget(targets.find(t => t.id === b.dataset.id));
   const p = new URLSearchParams(location.search);
   if (p.has("ra") && p.has("dec")) {
-    $("ra").value = p.get("ra"); $("dec").value = p.get("dec");
-    if (p.has("fov")) $("fov").value = p.get("fov");
-    if (p.has("detector")) $("det").value = p.get("detector");
+    state.ra = parseFloat(p.get("ra")); state.dec = parseFloat(p.get("dec"));
+    if (["0.05", "0.1", "0.2"].includes(p.get("fov"))) state.fov = p.get("fov");
+    if (DETECTORS.some(d => d.id === p.get("detector"))) state.det = p.get("detector");
+    if (["diff", "deep"].includes(p.get("mode"))) state.mode = p.get("mode");
+    const t = targets.find(t => Math.abs(t.ra - state.ra) < 1e-3 && Math.abs(t.dec - state.dec) < 1e-3);
+    state.name = p.get("name") || (t ? t.name : "");
+    if (t) state.catalog = { pmra: t.pmra, pmdec: t.pmdec };
+    if (t) for (const b of $("targets").children) b.setAttribute("aria-pressed", String(b.dataset.id === t.id));
+    $("ra").value = state.ra; $("dec").value = state.dec;
+    setSeg("fov", state.fov); setSeg("mode", state.mode); setDet(state.det); $("mode-hint").textContent = MODE_HINT[state.mode];
     load();
-  }
+  } else intro();
 })();
 </script>
 </body>

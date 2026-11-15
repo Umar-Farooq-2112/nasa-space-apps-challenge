@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy import ndimage
+from scipy.spatial import cKDTree
 
 PIX_ARCSEC = 6.15
 
@@ -23,6 +24,7 @@ class Frame:
     detector: str
     image: np.ndarray
     wcs: object  # astropy WCS (celestial, 2D)
+    wave: object = None  # optional astropy WCS: pixel -> (wavelength um, bandwidth um)
 
 
 def detect_sources(image, nsigma=5.0, max_sources=60):
@@ -73,30 +75,29 @@ def find_tracks(t, dets, tol=4.0, max_rate=300.0, min_frames=4):
     """t: days per frame. dets: per frame (x, y) arcsec arrays. Returns list of {frame_idx: det_idx}.
     tol: match radius (arcsec); max_rate: fastest allowed speed (arcsec/day)."""
     n = len(dets)
+    pts = [np.column_stack(d) if len(d[0]) else np.empty((0, 2)) for d in dets]
+    trees = [cKDTree(p) if len(p) else None for p in pts]
     hyps = []
     for a in range(n):
         for b in range(a + 1, n):
             dt = t[b] - t[a]
-            if dt < 1e-3:
+            if dt < 1e-3 or not len(pts[a]) or not len(pts[b]):
                 continue
-            for i in range(len(dets[a][0])):
-                for j in range(len(dets[b][0])):
-                    vx = (dets[b][0][j] - dets[a][0][i]) / dt
-                    vy = (dets[b][1][j] - dets[a][1][i]) / dt
-                    if np.hypot(vx, vy) > max_rate:
-                        continue
-                    members = {}
-                    for f in range(n):
-                        if len(dets[f][0]) == 0:
-                            continue
-                        px = dets[a][0][i] + vx * (t[f] - t[a])
-                        py = dets[a][1][i] + vy * (t[f] - t[a])
-                        d = np.hypot(dets[f][0] - px, dets[f][1] - py)
-                        k = int(np.argmin(d))
-                        if d[k] <= tol:
-                            members[f] = k
-                    if len(members) >= min_frames:
-                        hyps.append(members)
+            # every (i in a, j in b) pair at once: velocity grid, then nearest detection per frame via KD-tree
+            v = (pts[b][None, :, :] - pts[a][:, None, :]) / dt          # (I, J, 2)
+            ok = np.hypot(v[..., 0], v[..., 1]) <= max_rate
+            ii, jj = np.nonzero(ok)
+            if not len(ii):
+                continue
+            start, vel = pts[a][ii], v[ii, jj]
+            idx = np.full((len(ii), n), -1)
+            for f in range(n):
+                if trees[f] is None:
+                    continue
+                d, k = trees[f].query(start + vel * (t[f] - t[a]), distance_upper_bound=tol)
+                idx[np.isfinite(d), f] = k[np.isfinite(d)]
+            for row in idx[(idx >= 0).sum(axis=1) >= min_frames]:
+                hyps.append({f: int(k) for f, k in enumerate(row) if k >= 0})
     hyps.sort(key=len, reverse=True)
     used, tracks = set(), []
     for m in hyps:
@@ -108,12 +109,15 @@ def find_tracks(t, dets, tol=4.0, max_rate=300.0, min_frames=4):
 
 
 def spot_movers(frames, centre, min_frames=4, nsigma=5.0, tol=4.0, max_rate=300.0,
-                min_disp=3.0, min_sig=4.0):
-    """Main entry. Returns list of track dicts (movers only) with per-frame pixel positions + flux."""
+                min_disp=3.0, min_sig=4.0, half_size=None):
+    """Main entry. Returns list of track dicts (movers only) with per-frame pixel positions + flux.
+    half_size (arcsec): only use detections within this box around centre (cutout edges give fake tracks)."""
     frames = sorted(frames, key=lambda f: f.mjd)
     t = np.array([f.mjd for f in frames]) - frames[0].mjd
     raw = [detect_sources(f.image, nsigma) for f in frames]
     dets = [_to_arcsec(f, px, py, centre) for f, (px, py, _) in zip(frames, raw)]
+    if half_size:
+        dets = [(x[keep], y[keep]) for x, y in dets for keep in [(np.abs(x) <= half_size) & (np.abs(y) <= half_size)]]
 
     tracks = find_tracks(t, dets, tol, max_rate, min_frames)
 
@@ -156,11 +160,21 @@ def spot_movers(frames, centre, min_frames=4, nsigma=5.0, tol=4.0, max_rate=300.
             dec = dec0 + ey / 3600.0
             px, py = fr.wcs.world_to_pixel_values(ra, dec)
             ix, iy = int(round(float(px))), int(round(float(py)))
-            ok = 1 <= ix < fr.image.shape[1] - 1 and 1 <= iy < fr.image.shape[0] - 1
-            flux = float(np.nansum(fr.image[iy - 1:iy + 2, ix - 1:ix + 2])) if ok else None
-            pts.append({"frame": i, "px": float(px), "py": float(py), "flux": flux,
-                        "detected": i in fs})
+            ok = 3 <= ix < fr.image.shape[1] - 3 and 3 <= iy < fr.image.shape[0] - 3
+            flux = lam = None
+            if ok:   # aperture photometry: 3x3 sum minus the local sky from the surrounding 7x7 ring
+                box = fr.image[iy - 3:iy + 4, ix - 3:ix + 4]
+                ring = np.concatenate([box[[0, -1]].ravel(), box[1:-1, [0, -1]].ravel()])
+                flux = float(np.nansum(box[2:5, 2:5]) - 9 * np.nanmedian(ring))
+                if fr.wave is not None:   # SPHEREx: every pixel sees its own wavelength (linear variable filter)
+                    lam = float(fr.wave.pixel_to_world_values(px, py)[0])
+            pts.append({"frame": i, "px": float(px), "py": float(py), "ra": float(ra), "dec": float(dec),
+                        "flux": flux, "wavelength_um": lam, "detected": i in fs})
         movers.append({"rate_arcsec_per_day": rate, "rate_arcsec_per_year": rate * 365.25,
+                       "rate_err_arcsec_per_year": float(err * 365.25),
+                       "pa_deg": float(np.degrees(np.arctan2(vx, vy)) % 360),   # east of north
+                       "displacement_arcsec": float(disp), "span_days": float(span),
+                       "fit_rms_arcsec": float(rms), "significance": float(rate / err),
                        "n_detections": len(fs), "points": pts})
     movers.sort(key=lambda m: m["n_detections"], reverse=True)
     for k, m in enumerate(movers):

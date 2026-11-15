@@ -9,6 +9,7 @@ __pycache__/
 data/raw/
 data/frames/
 data/cache/
+data/index/
 *.fits
 *.fits.gz
 
