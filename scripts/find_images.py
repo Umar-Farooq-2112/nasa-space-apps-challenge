@@ -23,7 +23,7 @@ ORDER BY p.time_bounds_lower
 """
 
 
-def retry(fn, tries=100):
+def retry(fn, tries=2000):
     """Call fn() until it works; IRSA returns 502 a lot."""
     for i in range(tries):
         try:
