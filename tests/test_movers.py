@@ -60,3 +60,14 @@ def test_slow_mover_found():
 def test_fast_and_slow_movers():
     movers = run(build([(15.0, 40.0, 0.05, 0.0, 80.0), (45.0, 20.0, 0.0, -0.006, 70.0)]))
     assert len(movers) == 2
+
+
+def test_halo_and_ghost_of_a_bright_mover_are_flagged_not_reported_as_real():
+    # bright star drifting, a blob 4 px away that drifts with it (halo), a faint copy 25 px away (ghost)
+    v = (0.004, -0.002)
+    frames = build([(48.0, 48.0, *v, 3000.0), (52.0, 49.0, *v, 2500.0), (48.0, 23.0, *v, 25.0)])
+    found = run(frames)
+    real = [m for m in found if m["artifact"] is None]
+    assert len(real) == 1
+    assert {m["artifact"] for m in found if m["artifact"]} <= {"halo", "comoving"}
+    assert any(m["artifact"] == "halo" and m["of"] == real[0]["id"] for m in found)

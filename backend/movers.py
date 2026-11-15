@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 from astropy.wcs.utils import proj_plane_pixel_scales
 from scipy import ndimage
+from scipy.stats import binom
 
 PIX_ARCSEC = 6.15
 
@@ -119,6 +120,23 @@ def pixel_scale(frame):
     return float(np.mean(proj_plane_pixel_scales(frame.wcs)) * 3600.0)
 
 
+def significant_min_frames(dets, t, tol, field_arcsec, alpha=0.05):
+    """Fewest frames a track must appear in so that a CHANCE alignment is unlikely (look-elsewhere effect).
+    We try roughly (pairs of frames) x (detections)^2 candidate lines; with D random sources per frame inside a
+    field of area A, a random source lands within tol of a line with probability p = D*pi*tol^2/A.
+    Returns the smallest k with  expected_false_tracks = trials * P(k-2 or more extra hits) < alpha."""
+    n = len(t)
+    D = float(np.mean([len(d[0]) for d in dets])) if dets else 0.0
+    if n < 3 or D < 1:
+        return 3
+    p = min(D * np.pi * tol ** 2 / field_arcsec ** 2, 0.5)
+    trials = (n * (n - 1) / 2) * D * D
+    for k in range(3, n + 1):
+        if trials * binom.sf(k - 3, n - 2, p) < alpha:
+            return k
+    return n
+
+
 def spot_movers(frames, centre, min_frames=4, nsigma=5.0, tol=None, max_rate=None,
                 min_disp=None, min_sig=4.0):
     """Main entry. Returns list of track dicts (movers only) with per-frame pixel positions + flux.
@@ -138,6 +156,7 @@ def spot_movers(frames, centre, min_frames=4, nsigma=5.0, tol=None, max_rate=Non
     raw = [detect_sources(f.image, nsigma) for f in frames]
     dets = [_to_arcsec(f, px, py, centre) for f, (px, py, _) in zip(frames, raw)]
 
+    min_frames = max(min_frames, significant_min_frames(dets, t, tol, field))
     tracks = find_tracks(t, dets, tol, max_rate, min_frames)
 
     def fit_all(dets):
@@ -185,7 +204,38 @@ def spot_movers(frames, centre, min_frames=4, nsigma=5.0, tol=None, max_rate=Non
                         "detected": i in fs})
         movers.append({"rate_arcsec_per_day": rate, "rate_arcsec_per_year": rate * 365.25,
                        "n_detections": len(fs), "points": pts})
-    movers.sort(key=lambda m: m["n_detections"], reverse=True)
+    _flag_artifacts(movers)
+    movers.sort(key=lambda m: (m["artifact"] is not None, -m["n_detections"]))
     for k, m in enumerate(movers):
         m["id"] = k
     return movers
+
+
+def _flag_artifacts(movers, halo_px=10.0, ghost_std_px=1.5, ghost_flux_ratio=0.02):
+    """Very bright stars create fake sources that travel with them. Flag (never delete) two kinds:
+      halo     : stays within halo_px pixels of a brighter track in every frame (glare, spikes, saturation)
+      comoving : keeps an almost constant offset from a much brighter track (optical ghost image, or a true companion)
+    The brighter track is the real one. Flagged tracks carry artifact='halo'|'comoving' and of=<index of the star>."""
+    for m in movers:
+        f = [p["flux"] for p in m["points"] if p["detected"] and p["flux"] is not None]
+        m["_flux"] = float(np.mean(f)) if f else 0.0
+        m["artifact"], m["of"] = None, None
+    xy = lambda m: np.array([[p["px"], p["py"]] for p in m["points"]])
+    for b in movers:
+        for a in sorted(movers, key=lambda m: -m["_flux"]):
+            if a is b or a["_flux"] <= b["_flux"] or a["artifact"]:
+                continue
+            off = xy(b) - xy(a)
+            dist = np.hypot(off[:, 0], off[:, 1])
+            if dist.max() < halo_px:
+                b["artifact"], b["of"] = "halo", a
+            elif off.std(axis=0).max() < ghost_std_px and b["_flux"] < ghost_flux_ratio * a["_flux"]:
+                b["artifact"], b["of"] = "comoving", a
+            if b["artifact"]:
+                break
+    movers_sorted = sorted(movers, key=lambda m: (m["artifact"] is not None, -m["n_detections"]))
+    index = {id(m): k for k, m in enumerate(movers_sorted)}
+    for m in movers:
+        m["of"] = index[id(m["of"])] if m["of"] is not None else None
+    for m in movers:
+        m.pop("_flux")

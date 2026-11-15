@@ -17,3 +17,6 @@ tmp/
 *.log
 .playwright-mcp/
 data/uploads/
+
+frontend/node_modules/
+frontend/dist/

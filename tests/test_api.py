@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from backend import store
 from backend.app import app
-from tests.test_movers import RA0, DEC0, N, build
+from tests.test_movers import RA0, DEC0, build
 
 client = TestClient(app)
 
@@ -36,6 +36,12 @@ def upload(ds, items):
 
 def new_ds(**kw):
     return client.post("/api/datasets", json={"name": "Test field", **kw}).json()["id"]
+
+
+def patch(ds, **kw):
+    r = client.patch(f"/api/datasets/{ds}", json=kw)
+    assert r.status_code == 200, r.text
+    return r.json()
 
 
 def test_upload_then_find_mover():
@@ -66,23 +72,44 @@ def test_helpful_errors():
     assert msgs[3] == "OK" and "already" in msgs[4]
 
 
-def test_big_image_needs_centre_and_is_cropped():
+def test_centre_can_be_set_changed_and_cleared_any_time():
     f = build([])[0]
     big = np.random.default_rng(0).normal(0, 1, (400, 400)).astype("f4")
-    # same pixel grid, bigger array: reference pixel stays at (N/2, N/2) so RA0/DEC0 sit inside it
-    ds = new_ds()
-    assert "large" in upload(ds, [("big.fits", fits_bytes(f, data=big))])[0]["error"]
-    ds2 = new_ds(ra=RA0, dec=DEC0)
-    r = upload(ds2, [("big.fits", fits_bytes(f, data=big))])[0]
-    assert r["ok"] and r["cropped"] and r["size"] == [200, 200]
+    ds = new_ds()                                            # no centre at creation
+    assert upload(ds, [("big.fits", fits_bytes(f, data=big))])[0]["ok"]          # upload is accepted ...
+    s = client.get(f"/api/datasets/{ds}").json()
+    assert s["n_needs_centre"] == 1 and s["n_ok"] == 0       # ... but it needs a centre to be shown
+    assert client.get(f"/api/datasets/{ds}/frames").json()["frames"] == []
+
+    s = patch(ds, ra=RA0, dec=DEC0)                          # set
+    assert s["n_ok"] == 1 and s["centre"] == pytest.approx([RA0, DEC0])
+    fr = client.get(f"/api/datasets/{ds}/frames").json()["frames"]
+    assert (fr[0]["width"], fr[0]["height"]) == (600, 600)   # 200 px window x scale 3
+
+    s = patch(ds, ra=RA0 + 5, dec=DEC0)                      # change to somewhere the image does not cover
+    assert s["n_outside"] == 1 and s["n_ok"] == 0
+    s = patch(ds, ra=RA0, dec=DEC0)                          # change back
+    assert s["n_ok"] == 1
+    s = patch(ds, crop=100)                                  # window size
+    assert client.get(f"/api/datasets/{ds}/frames").json()["frames"][0]["width"] == 600   # 100 px x scale 6
+    s = patch(ds, clear_centre=True)                         # cancel
+    assert s["centre"] is None and s["n_needs_centre"] == 1 and s["n_ok"] == 0
 
 
-def test_image_not_covering_centre_is_rejected():
+def test_small_images_work_without_centre_and_originals_are_kept():
     f = build([])[0]
-    ds = new_ds(ra=RA0 + 5, dec=DEC0)
-    assert "does not cover" in upload(ds, [("a.fits", fits_bytes(f))])[0]["error"]
+    ds = new_ds()
+    assert upload(ds, [("a.fits", fits_bytes(f))])[0]["ok"]
+    s = client.get(f"/api/datasets/{ds}").json()
+    assert s["n_ok"] == 1 and s["centre"] is None and s["centre_is_auto"] and s["effective_centre"] is not None
+    names = [x["orig"] for x in client.get(f"/api/datasets/{ds}/files").json()]
+    assert names == ["a.fits"]
+    assert client.delete(f"/api/datasets/{ds}/files/{client.get(f'/api/datasets/{ds}/files').json()[0]['file']}").json()["n_files"] == 0
 
 
-def test_bad_dataset_id():
+def test_bad_values_and_ids():
+    ds = new_ds()
+    assert client.patch(f"/api/datasets/{ds}", json={"ra": 10, "dec": 120}).status_code == 400
+    assert client.patch(f"/api/datasets/{ds}", json={"ra": 10}).status_code == 400
     assert client.get("/api/datasets/../frames").status_code in (400, 404)
     assert client.get("/api/datasets/nope/frames").status_code == 400
