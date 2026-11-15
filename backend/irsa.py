@@ -124,6 +124,9 @@ _jobs: dict[str, dict] = {}
 _lock = threading.Lock()
 
 
+MAX_JOBS = 4  # ponytail: global cap; add per-client rate limits if this is ever hosted publicly
+
+
 def start(ra, dec, fov, detector, folder: Path) -> dict:
     """Start a background fetch unless one is running or finished recently. Returns the job status
     {state: searching|downloading|done|error, total, error}."""
@@ -135,6 +138,10 @@ def start(ra, dec, fov, detector, folder: Path) -> dict:
             recent = time.time() - j["t"] < (3600 if j["state"] == "done" else 30)
             if running or recent:
                 return j
+        # cap concurrent downloads so a flood of new positions cannot exhaust bandwidth, threads or disk
+        # (not stored in _jobs, so the client simply retries on its next poll)
+        if sum(x["state"] in ("searching", "downloading") for x in _jobs.values()) >= MAX_JOBS:
+            return {"state": "error", "total": None, "error": "Many people are fetching new spots right now. Try again in a minute.", "t": time.time()}
         j = _jobs[key] = {"state": "searching", "total": None, "error": None, "t": time.time()}
 
     def run():
